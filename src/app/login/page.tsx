@@ -38,7 +38,7 @@ export default function LoginPage() {
             className="text-xl font-semibold tracking-tight"
             style={{ color: "#FFFFFF" }}
           >
-            Truble
+            Squibble
           </span>
         </div>
 
@@ -56,7 +56,7 @@ export default function LoginPage() {
               className="text-lg font-semibold"
               style={{ color: "#FFFFFF" }}
             >
-              Welcome to Truble
+              Welcome to Squibble
             </h1>
             <p
               className="text-sm"
@@ -112,7 +112,7 @@ export default function LoginPage() {
           className="text-xs text-center max-w-xs"
           style={{ color: "rgba(255,255,255,0.2)" }}
         >
-          By continuing, you grant Truble permission to send emails on your
+          By continuing, you grant Squibble permission to send emails on your
           behalf via Gmail.
         </p>
       </div>

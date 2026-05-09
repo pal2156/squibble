@@ -24,7 +24,7 @@ function StatusBadge({ status }: { status: EmailStatus }) {
 }
 
 function getInitials(name: string) {
-  return name.replace("Prof. ", "").split(" ").map((n) => n[0]).join("").slice(0, 2);
+  return name.split(" ").map((n) => n[0]).join("").slice(0, 2);
 }
 
 const conversations: SentEmail[] = sentEmails

@@ -134,7 +134,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                 <Zap className="w-2.5 h-2.5" style={{ color: "#5C7C89" }} />
               </div>
               <span className="text-sm font-semibold tracking-tight" style={{ color: "#FFFFFF" }}>
-                Truble
+                Squibble
               </span>
               <span
                 className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border"

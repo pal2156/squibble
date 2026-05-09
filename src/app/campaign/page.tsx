@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
@@ -98,17 +98,40 @@ function LoadingModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+const inputStyle = (filled: boolean) => ({
+  background: "var(--bg-card)",
+  borderColor: filled ? "var(--border-strong)" : "var(--border-default)",
+  color: "var(--ink)",
+  outline: "none",
+  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+});
+
+const selectClassName =
+  "w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 appearance-none";
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--ink-tertiary, var(--ink-secondary))" }}>
+      {children}
+    </p>
+  );
+}
+
 export default function CampaignPage() {
   const router = useRouter();
   const [university, setUniversity] = useState("");
   const [research, setResearch] = useState("");
+  const [positionType, setPositionType] = useState("");
+  const [timeCommitment, setTimeCommitment] = useState("");
+  const [availability, setAvailability] = useState("");
+  const [locationPref, setLocationPref] = useState("");
   const [showModal, setShowModal] = useState(false);
 
   const ready = university.trim() && research.trim();
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-lg">
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-2xl">
         <div className="mb-9 text-center">
           <h1 className="text-2xl font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
             New campaign
@@ -118,35 +141,86 @@ export default function CampaignPage() {
           </p>
         </div>
 
-        <div className="space-y-2.5 mb-6">
-          <input
-            type="text"
-            value={university}
-            onChange={(e) => setUniversity(e.target.value)}
-            placeholder="Which university?"
-            className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
-            style={{
-              background: "var(--bg-card)",
-              borderColor: university ? "var(--border-strong)" : "var(--border-default)",
-              color: "var(--ink)",
-              outline: "none",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            }}
-          />
-          <textarea
-            value={research}
-            onChange={(e) => setResearch(e.target.value)}
-            placeholder="What do you want to research?"
-            rows={3}
-            className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none overflow-y-auto"
-            style={{
-              background: "var(--bg-card)",
-              borderColor: research ? "var(--border-strong)" : "var(--border-default)",
-              color: "var(--ink)",
-              outline: "none",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-            }}
-          />
+        {/* Two-column form */}
+        <div className="flex flex-col sm:flex-row gap-5 mb-6">
+          {/* Left: Campaign scope */}
+          <div className="flex-1 rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+            <SectionLabel>Campaign scope</SectionLabel>
+            <div className="space-y-2.5">
+              <input
+                type="text"
+                value={university}
+                onChange={(e) => setUniversity(e.target.value)}
+                placeholder="Which university?"
+                className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
+                style={inputStyle(!!university)}
+              />
+              <textarea
+                value={research}
+                onChange={(e) => setResearch(e.target.value)}
+                placeholder="What do you want to research?"
+                rows={4}
+                className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none"
+                style={inputStyle(!!research)}
+              />
+            </div>
+          </div>
+
+          {/* Right: Logistics */}
+          <div className="flex-1 rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+            <SectionLabel>Logistics</SectionLabel>
+            <div className="space-y-2.5">
+              <select
+                value={positionType}
+                onChange={(e) => setPositionType(e.target.value)}
+                className={selectClassName}
+                style={inputStyle(!!positionType)}
+              >
+                <option value="" disabled>Position type</option>
+                <option>Paid</option>
+                <option>Unpaid</option>
+                <option>Flexible / Open to any</option>
+              </select>
+
+              <select
+                value={timeCommitment}
+                onChange={(e) => setTimeCommitment(e.target.value)}
+                className={selectClassName}
+                style={inputStyle(!!timeCommitment)}
+              >
+                <option value="" disabled>Time commitment</option>
+                <option>Full-time (40+ hrs/week)</option>
+                <option>Part-time (10–20 hrs/week)</option>
+                <option>Part-time (20–30 hrs/week)</option>
+                <option>Flexible</option>
+              </select>
+
+              <input
+                type="text"
+                value={availability}
+                onChange={(e) => setAvailability(e.target.value)}
+                placeholder="When and how long are you available?"
+                className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
+                style={inputStyle(!!availability)}
+              />
+              <p className="text-xs" style={{ color: "var(--ink-secondary)", marginTop: 2 }}>
+                e.g. Mid-May to mid-August
+              </p>
+
+              <select
+                value={locationPref}
+                onChange={(e) => setLocationPref(e.target.value)}
+                className={selectClassName}
+                style={inputStyle(!!locationPref)}
+              >
+                <option value="" disabled>Location preference</option>
+                <option>On-site only</option>
+                <option>Remote only</option>
+                <option>Hybrid</option>
+                <option>No preference</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <button

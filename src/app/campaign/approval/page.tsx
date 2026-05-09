@@ -162,7 +162,6 @@ export default function ApprovalPage() {
               style={{ background: "var(--bg-elevated)", color: "var(--ink-secondary)" }}
             >
               {prof.name
-                .replace("Prof. ", "")
                 .split(" ")
                 .map((n) => n[0])
                 .join("")

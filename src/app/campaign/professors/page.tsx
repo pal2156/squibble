@@ -112,7 +112,6 @@ function ProfessorCard({
 }) {
   const scoreStyle = fitScoreStyle(professor.fitScore);
   const initials = professor.name
-    .replace("Prof. ", "")
     .split(" ")
     .map((n) => n[0])
     .join("")

@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { sentEmails, type EmailStatus, type SentEmail } from "@/lib/mock-data";
 import { TrendingUp, Send, MessageSquare, Layers, ChevronUp, ChevronDown, Search, ChevronRight, Calendar, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ResponseRateChart } from "@/components/ResponseRateChart";
+import { ChartRow } from "@/components/ChartRow";
 
 type SortCol = "professor" | "university" | "department" | "campaign" | "dateSent" | "status";
 type SortDir = "asc" | "desc";
@@ -86,12 +86,17 @@ export default function DashboardPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [statusFilter, setStatusFilter] = useState<StatusTab>("All");
   const [search, setSearch] = useState("");
-  const [dateSearch, setDateSearch] = useState("");
+  const [monthInput, setMonthInput] = useState("");
+  const [dayInput, setDayInput] = useState("");
+  const [yearInput, setYearInput] = useState("");
   const [campaignFilter, setCampaignFilter] = useState("All Campaigns");
   const [universityFilter, setUniversityFilter] = useState("All Universities");
   const [selectedEmail, setSelectedEmail] = useState<SentEmail | null>(null);
   const [firstName, setFirstName] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
+  const monthRef = useRef<HTMLInputElement>(null);
+  const dayRef = useRef<HTMLInputElement>(null);
+  const yearRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const supabase = createClient();
@@ -108,6 +113,37 @@ export default function DashboardPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [selectedEmail]);
+
+  const dateSearch = (monthInput || dayInput || yearInput)
+    ? `${monthInput.padStart(2, "0")}/${dayInput.padStart(2, "0")}/${yearInput}`
+    : "";
+  const isDateInvalid = dateSearch !== "" && yearInput.length === 4 && parseSingleDate(dateSearch) === null;
+
+  const handleMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (val.length === 1 && +val > 1) {
+      setMonthInput("0" + val);
+      dayRef.current?.focus();
+    } else {
+      setMonthInput(val);
+      if (val.length === 2) dayRef.current?.focus();
+    }
+  };
+
+  const handleDayChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.replace(/\D/g, "").slice(0, 2);
+    if (val.length === 1 && +val > 3) {
+      setDayInput("0" + val);
+      yearRef.current?.focus();
+    } else {
+      setDayInput(val);
+      if (val.length === 2) yearRef.current?.focus();
+    }
+  };
+
+  const handleYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setYearInput(e.target.value.replace(/\D/g, "").slice(0, 4));
+  };
 
   const handleSort = (col: SortCol) => {
     if (sortCol === col) {
@@ -163,7 +199,7 @@ export default function DashboardPage() {
     });
 
     return rows;
-  }, [sortCol, sortDir, statusFilter, search, dateSearch, campaignFilter, universityFilter]);
+  }, [sortCol, sortDir, statusFilter, search, monthInput, dayInput, yearInput, campaignFilter, universityFilter]);
 
   const stats = [
     { label: "Emails Sent", value: totalSent, icon: Send, color: "#60a5fa", bg: "rgba(59,130,246,0.08)" },
@@ -215,8 +251,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Response Rate Chart */}
-      <ResponseRateChart />
+      {/* Charts row */}
+      <ChartRow />
 
 
       {/* Filters row */}
@@ -242,31 +278,54 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Date filter */}
-        {(() => {
-          const isInvalid = dateSearch.trim() !== "" && parseSingleDate(dateSearch) === null;
-          return (
-            <div className="relative">
-              <Calendar
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-                style={{ color: isInvalid ? "#ef4444" : "var(--ink-muted)" }}
-              />
-              <input
-                type="text"
-                placeholder="MM/DD/YYYY"
-                value={dateSearch}
-                onChange={(e) => setDateSearch(e.target.value)}
-                className="w-32 pl-8 pr-3 py-1.5 text-xs rounded-lg border"
-                style={{
-                  background: "var(--bg-card)",
-                  borderColor: isInvalid ? "#ef4444" : "var(--border-subtle)",
-                  color: "var(--ink)",
-                  outline: "none",
-                }}
-              />
-            </div>
-          );
-        })()}
+        {/* Date filter — segmented MM / DD / YYYY */}
+        <div
+          className="flex items-center gap-0 rounded-lg border px-2.5 py-1.5"
+          style={{
+            background: "var(--bg-card)",
+            borderColor: isDateInvalid ? "#ef4444" : "var(--border-subtle)",
+          }}
+        >
+          <Calendar
+            className="w-3 h-3 mr-1.5 flex-shrink-0 pointer-events-none"
+            style={{ color: isDateInvalid ? "#ef4444" : "var(--ink-muted)" }}
+          />
+          <input
+            ref={monthRef}
+            type="text"
+            inputMode="numeric"
+            placeholder="MM"
+            value={monthInput}
+            onChange={handleMonthChange}
+            onKeyDown={(e) => { if (e.key === "Backspace" && monthInput === "") { setMonthInput(""); } }}
+            className="text-xs bg-transparent text-center tabular-nums"
+            style={{ width: "3ch", color: "var(--ink)", outline: "none" }}
+          />
+          <span className="text-xs select-none" style={{ color: "var(--ink-muted)" }}>/</span>
+          <input
+            ref={dayRef}
+            type="text"
+            inputMode="numeric"
+            placeholder="DD"
+            value={dayInput}
+            onChange={handleDayChange}
+            onKeyDown={(e) => { if (e.key === "Backspace" && dayInput === "") monthRef.current?.focus(); }}
+            className="text-xs bg-transparent text-center tabular-nums"
+            style={{ width: "3ch", color: "var(--ink)", outline: "none" }}
+          />
+          <span className="text-xs select-none" style={{ color: "var(--ink-muted)" }}>/</span>
+          <input
+            ref={yearRef}
+            type="text"
+            inputMode="numeric"
+            placeholder="YYYY"
+            value={yearInput}
+            onChange={handleYearChange}
+            onKeyDown={(e) => { if (e.key === "Backspace" && yearInput === "") dayRef.current?.focus(); }}
+            className="text-xs bg-transparent text-center tabular-nums"
+            style={{ width: "5ch", color: "var(--ink)", outline: "none" }}
+          />
+        </div>
 
         {/* Campaign dropdown */}
         <div className="relative">
@@ -493,7 +552,7 @@ export default function DashboardPage() {
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0"
                 style={{ background: "var(--bg-elevated)", color: "var(--ink-secondary)" }}
               >
-                {selectedEmail.professor.replace("Prof. ", "").split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                {selectedEmail.professor.split(" ").map((n) => n[0]).join("").slice(0, 2)}
               </div>
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold truncate" style={{ color: "var(--ink)" }}>

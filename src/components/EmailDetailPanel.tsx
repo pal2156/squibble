@@ -59,7 +59,6 @@ export default function EmailDetailPanel({ email, onClose }: Props) {
   }, [onClose]);
 
   const initials = email.professor
-    .replace("Prof. ", "")
     .split(" ")
     .map((n) => n[0])
     .join("")
