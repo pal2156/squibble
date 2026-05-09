@@ -1,332 +1,351 @@
 "use client";
 
-import { useState } from "react";
-import { student } from "@/lib/mock-data";
-import { Upload, Save, Check, FileText, Plus, X } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { Upload, FileText, ArrowRight, ArrowLeft, Check, X } from "lucide-react";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+const TOTAL_STEPS = 2;
+const STORAGE_KEY = "truble_profile";
+
+interface StoredProfile {
+  profile_complete: boolean;
+  cvName: string;
+  extra: string;
+}
+
+interface FormState {
+  cvName: string;
+  extra: string;
+}
+
+function ProgressBar({ step }: { step: number }) {
   return (
-    <div>
-      <label className="block text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--ink-muted)", letterSpacing: "0.08em" }}>
-        {label}
-      </label>
-      {children}
+    <div className="flex items-center gap-0 mb-12">
+      {Array.from({ length: TOTAL_STEPS }, (_, i) => {
+        const n = i + 1;
+        const done = n < step;
+        const active = n === step;
+        return (
+          <div key={n} className="flex items-center flex-1 last:flex-none">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-all duration-300"
+              style={
+                done
+                  ? { background: "#1F4959", color: "#fff" }
+                  : active
+                  ? { background: "#5C7C89", color: "#fff", boxShadow: "0 0 12px rgba(92,124,137,0.4)" }
+                  : { background: "var(--bg-elevated)", color: "var(--ink-muted)" }
+              }
+            >
+              {done ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : n}
+            </div>
+            {n < TOTAL_STEPS && (
+              <div
+                className="flex-1 h-px mx-1.5 transition-all duration-500"
+                style={{ background: done ? "#1F4959" : "var(--border-subtle)" }}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-const inputStyle = {
-  background: "var(--bg-card)",
-  borderColor: "var(--border-default)",
-  color: "var(--ink)",
-  outline: "none",
-};
+function StepHeading({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <div className="mb-6">
+      <h2 className="text-xl font-bold tracking-tight mb-1" style={{ color: "var(--ink)" }}>{title}</h2>
+      {subtitle && <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>{subtitle}</p>}
+    </div>
+  );
+}
 
-export default function ProfilePage() {
-  const [saved, setSaved] = useState(false);
-  const [cvUploaded, setCvUploaded] = useState(true);
-  const [name, setName] = useState(student.name.replace(".", ""));
-  const [university, setUniversity] = useState(student.university);
-  const [year, setYear] = useState(student.year);
-  const [gpa, setGpa] = useState(student.gpa);
-  const [fields, setFields] = useState(student.fields.join(", "));
-  const [subfield, setSubfield] = useState(student.subfield);
-  const [coursework, setCoursework] = useState(student.coursework);
-  const [newCourse, setNewCourse] = useState("");
-  const [experience, setExperience] = useState(student.experience);
-  const [availability, setAvailability] = useState(student.availability);
-  const [preference, setPreference] = useState(student.preference);
+function CVUploadZone({
+  cvName,
+  parsing,
+  onUpload,
+  onClear,
+  onReplace,
+  compact,
+}: {
+  cvName: string;
+  parsing: boolean;
+  onUpload: (file: File | null) => void;
+  onClear: () => void;
+  onReplace?: () => void;
+  compact?: boolean;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
-  const addCourse = () => {
-    if (newCourse.trim()) {
-      setCoursework([...coursework, newCourse.trim()]);
-      setNewCourse("");
-    }
-  };
-
-  const removeCourse = (i: number) => {
-    setCoursework(coursework.filter((_, idx) => idx !== i));
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    onUpload(e.dataTransfer.files?.[0] ?? null);
   };
 
   return (
-    <div className="px-10 py-10 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="mb-10">
-        <h1 className="text-3xl font-bold tracking-tight mb-1.5" style={{ color: "var(--ink)" }}>
-          Profile
-        </h1>
-        <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
-          This is what Claude uses to personalize your emails. Keep it accurate.
-        </p>
-      </div>
-
-      <div className="space-y-7">
-        {/* Basic info */}
-        <div
-          className="rounded-2xl border p-6 space-y-5"
-          style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
+    <>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf"
+        className="hidden"
+        onChange={(e) => { onUpload(e.target.files?.[0] ?? null); if (fileRef.current) fileRef.current.value = ""; }}
+      />
+      {!cvName ? (
+        <button
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+          className="w-full border-2 border-dashed rounded-2xl flex flex-col items-center gap-3 transition-all duration-150"
+          style={{ borderColor: "var(--border-default)", padding: compact ? "2.5rem 1rem" : "3.5rem 1rem" }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-strong)")}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
         >
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--ink-muted)" }}>
-            Basic Info
-          </h2>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Full Name">
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors"
-                style={inputStyle}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-              />
-            </Field>
-            <Field label="University">
-              <input
-                type="text"
-                value={university}
-                onChange={(e) => setUniversity(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm transition-colors"
-                style={inputStyle}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-              />
-            </Field>
-            <Field label="Year">
-              <select
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm appearance-none cursor-pointer"
-                style={inputStyle}
-              >
-                {["Freshman", "Sophomore", "Junior", "Senior", "Graduate"].map((y) => (
-                  <option key={y} value={y} style={{ background: "var(--bg-elevated)" }}>{y}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="GPA">
-              <input
-                type="text"
-                value={gpa}
-                onChange={(e) => setGpa(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                style={inputStyle}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-              />
-            </Field>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
+            <Upload className="w-5 h-5" style={{ color: "var(--ink-muted)" }} />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium mb-0.5" style={{ color: "var(--ink-secondary)" }}>
+              Drag & drop or <span style={{ color: "#5C7C89" }}>click to browse</span>
+            </p>
+            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF up to 5MB</p>
+          </div>
+        </button>
+      ) : parsing ? (
+        <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--bg-elevated)" }}>
+            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" style={{ color: "#5C7C89" }}>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>{cvName}</p>
+            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>Reading your CV…</p>
           </div>
         </div>
-
-        {/* Academic focus */}
-        <div
-          className="rounded-2xl border p-6 space-y-5"
-          style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
-        >
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--ink-muted)" }}>
-            Academic Focus
-          </h2>
-
-          <Field label="Field(s) of Interest">
-            <input
-              type="text"
-              value={fields}
-              onChange={(e) => setFields(e.target.value)}
-              placeholder="e.g. Physics, Mathematics"
-              className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-            />
-          </Field>
-
-          <Field label="Subfield / Research Interest">
-            <input
-              type="text"
-              value={subfield}
-              onChange={(e) => setSubfield(e.target.value)}
-              placeholder="e.g. Condensed Matter, Quantum Computing"
-              className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-            />
-          </Field>
-
-          <Field label="Relevant Coursework">
-            <div className="flex flex-wrap gap-2 mb-2.5">
-              {coursework.map((course, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full"
-                  style={{ background: "var(--bg-elevated)", color: "var(--ink-secondary)", border: "1px solid var(--border-default)" }}
-                >
-                  {course}
-                  <button onClick={() => removeCourse(i)} style={{ color: "var(--ink-muted)" }}>
-                    <X className="w-3 h-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newCourse}
-                onChange={(e) => setNewCourse(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addCourse()}
-                placeholder="Add a course..."
-                className="flex-1 px-3.5 py-2 rounded-xl border text-sm"
-                style={inputStyle}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-              />
-              <button
-                onClick={addCourse}
-                className="px-3 py-2 rounded-xl border text-sm transition-colors"
-                style={{ background: "var(--bg-elevated)", borderColor: "var(--border-default)", color: "var(--ink-secondary)" }}
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-            </div>
-          </Field>
-        </div>
-
-        {/* Background */}
-        <div
-          className="rounded-2xl border p-6 space-y-5"
-          style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
-        >
-          <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: "var(--ink-muted)" }}>
-            Background & Availability
-          </h2>
-
-          <Field label="Research Experience">
-            <textarea
-              value={experience}
-              onChange={(e) => setExperience(e.target.value)}
-              rows={4}
-              placeholder="Describe any relevant research, lab, or project experience..."
-              className="w-full px-3.5 py-3 rounded-xl border text-sm leading-relaxed resize-none"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-            />
-          </Field>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Availability">
-              <input
-                type="text"
-                value={availability}
-                onChange={(e) => setAvailability(e.target.value)}
-                placeholder="e.g. Summer 2025, starting mid-May"
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm"
-                style={inputStyle}
-                onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
-              />
-            </Field>
-            <Field label="Location Preference">
-              <select
-                value={preference}
-                onChange={(e) => setPreference(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border text-sm appearance-none cursor-pointer"
-                style={inputStyle}
-              >
-                {["In-person", "Remote", "In-person or hybrid", "No preference"].map((p) => (
-                  <option key={p} value={p} style={{ background: "var(--bg-elevated)" }}>{p}</option>
-                ))}
-              </select>
-            </Field>
+      ) : (
+        <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "rgba(52,211,153,0.04)", borderColor: "rgba(52,211,153,0.18)" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(52,211,153,0.1)" }}>
+            <FileText className="w-5 h-5" style={{ color: "#34d399" }} />
           </div>
-        </div>
-
-        {/* CV Upload */}
-        <div
-          className="rounded-2xl border p-6"
-          style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
-        >
-          <h2 className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: "var(--ink-muted)" }}>
-            Curriculum Vitae
-          </h2>
-          {cvUploaded ? (
-            <div
-              className="flex items-center gap-3 px-4 py-3 rounded-xl border"
-              style={{ background: "rgba(52,211,153,0.04)", borderColor: "rgba(52,211,153,0.15)" }}
-            >
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: "rgba(52,211,153,0.12)" }}
-              >
-                <FileText className="w-4 h-4" style={{ color: "#34d399" }} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>Paul_Lacarriere_CV.pdf</p>
-                <p className="text-xs" style={{ color: "var(--ink-muted)" }}>Uploaded Apr 8, 2025 · 184 KB</p>
-              </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate" style={{ color: "var(--ink)" }}>{cvName}</p>
+            {onReplace && (
               <button
-                onClick={() => setCvUploaded(false)}
-                className="text-xs font-medium transition-colors"
+                onClick={() => fileRef.current?.click()}
+                className="text-xs underline underline-offset-2"
                 style={{ color: "var(--ink-muted)" }}
               >
                 Replace
               </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setCvUploaded(true)}
-              className="w-full border-2 border-dashed rounded-xl py-8 flex flex-col items-center gap-2 transition-all duration-150 group"
-              style={{ borderColor: "var(--border-default)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-strong)")}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
-            >
-              <Upload className="w-6 h-6" style={{ color: "var(--ink-muted)" }} />
-              <div className="text-center">
-                <p className="text-sm font-medium" style={{ color: "var(--ink-secondary)" }}>
-                  Click to upload CV
-                </p>
-                <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF up to 5MB</p>
-              </div>
-            </button>
-          )}
+            )}
+          </div>
+          <button onClick={onClear} style={{ color: "var(--ink-muted)" }}>
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
+    </>
+  );
+}
 
-        {/* Save */}
-        <div className="flex justify-end pb-4">
+export default function ProfilePage() {
+  const router = useRouter();
+  const [step, setStep] = useState(1);
+  const [parsing, setParsing] = useState(false);
+  const [form, setForm] = useState<FormState>({ cvName: "", extra: "" });
+  const [isEditView, setIsEditView] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const stored: StoredProfile = JSON.parse(raw);
+        if (stored.profile_complete) {
+          setForm({ cvName: stored.cvName ?? "", extra: stored.extra ?? "" });
+          setIsEditView(true);
+        }
+      }
+    } catch { /* ignore corrupt storage */ }
+    setLoaded(true);
+  }, []);
+
+  const set = useCallback(<K extends keyof FormState>(key: K, val: FormState[K]) => {
+    setForm((f) => ({ ...f, [key]: val }));
+    setSaved(false);
+  }, []);
+
+  const handleUpload = (file: File | null) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) return;
+    set("cvName", file.name);
+    setParsing(true);
+    setTimeout(() => setParsing(false), 1800);
+  };
+
+  const persist = (f: FormState) =>
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ profile_complete: true, ...f } satisfies StoredProfile));
+
+  const handleContinue = () => {
+    if (step < TOTAL_STEPS) {
+      setStep((s) => s + 1);
+    } else {
+      persist(form);
+      router.push("/profile/complete");
+    }
+  };
+
+  const handleSave = () => {
+    persist(form);
+    setSaved(true);
+  };
+
+  if (!loaded) return null;
+
+  // ── Edit view (return visits) ──────────────────────────────────────────────
+  if (isEditView) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-lg">
+          <div className="mb-10 text-center">
+            <h2 className="text-3xl font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>Your profile</h2>
+            <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>Edit and save at any time.</p>
+          </div>
+
+          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--ink-muted)" }}>CV</p>
+          <div className="mb-6">
+            <CVUploadZone
+              cvName={form.cvName}
+              parsing={parsing}
+              onUpload={handleUpload}
+              onClear={() => set("cvName", "")}
+              onReplace={() => {}}
+              compact
+            />
+          </div>
+
+          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--ink-muted)" }}>Anything else?</p>
+          <textarea
+            value={form.extra}
+            onChange={(e) => set("extra", e.target.value)}
+            rows={10}
+            className="w-full px-3.5 py-3 rounded-lg border text-sm leading-relaxed resize-y mb-5"
+            style={{
+              background: "var(--bg-card)",
+              borderColor: "var(--border-default)",
+              color: "var(--ink)",
+              outline: "none",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+            }}
+            onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
+            onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
+          />
+
           <button
             onClick={handleSave}
-            className="flex items-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-200"
-            style={
-              saved
-                ? {
-                    background: "rgba(52,211,153,0.1)",
-                    color: "#34d399",
-                    border: "1px solid rgba(52,211,153,0.2)",
-                  }
-                : {
-                    background: "var(--accent)",
-                    color: "#fff",
-                    boxShadow: "0 0 20px rgba(124,111,247,0.25)",
-                  }
-            }
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150"
+            style={{ background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }}
           >
             {saved ? (
-              <>
-                <Check className="w-4 h-4" strokeWidth={2.5} />
-                Saved
-              </>
+              <><Check className="w-4 h-4" strokeWidth={2.5} /> Saved</>
             ) : (
-              <>
-                <Save className="w-4 h-4" />
-                Save Profile
-              </>
+              "Save changes"
             )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── First-time onboarding flow ─────────────────────────────────────────────
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+      <div className="w-full max-w-lg">
+        <ProgressBar step={step} />
+
+        {step === 1 && (
+          <div className="animate-fade-in">
+            <StepHeading
+              title="Upload your CV"
+              subtitle="We'll read it to personalize your emails."
+            />
+            <CVUploadZone
+              cvName={form.cvName}
+              parsing={parsing}
+              onUpload={handleUpload}
+              onClear={() => set("cvName", "")}
+            />
+            {!form.cvName && (
+              <p className="text-center text-xs mt-4" style={{ color: "var(--ink-muted)" }}>
+                Don't have one ready?{" "}
+                <button
+                  onClick={() => setStep(2)}
+                  className="underline underline-offset-2"
+                  style={{ color: "var(--accent-hover)" }}
+                >
+                  Skip for now
+                </button>
+              </p>
+            )}
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="animate-fade-in">
+            <StepHeading
+              title="Anything else you want us to know?"
+            />
+            <textarea
+              value={form.extra}
+              onChange={(e) => set("extra", e.target.value)}
+              rows={12}
+              className="w-full px-3.5 py-3 rounded-lg border text-sm leading-relaxed resize-y"
+              style={{
+                background: "var(--bg-card)",
+                borderColor: "var(--border-default)",
+                color: "var(--ink)",
+                outline: "none",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+              }}
+              onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
+              onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
+            />
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-8">
+          {step > 1 ? (
+            <button
+              onClick={() => setStep((s) => s - 1)}
+              className="flex items-center gap-1.5 text-xs font-medium transition-colors px-3 py-2 rounded-lg"
+              style={{ color: "var(--ink-muted)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--ink-secondary)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--ink-muted)")}
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <button
+            onClick={handleContinue}
+            disabled={parsing}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={
+              !parsing
+                ? { background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }
+                : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
+            }
+          >
+            {step === TOTAL_STEPS ? "Save & continue" : "Continue"}
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

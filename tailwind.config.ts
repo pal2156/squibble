@@ -11,25 +11,25 @@ const config: Config = {
     extend: {
       colors: {
         bg: {
-          base: "#07070f",
-          surface: "#0d0d1a",
-          card: "#111120",
-          elevated: "#161628",
+          base: "#EEF5F8",
+          surface: "#E4EFF4",
+          card: "#FFFFFF",
+          elevated: "#D6E8EF",
         },
         border: {
-          subtle: "rgba(255,255,255,0.05)",
-          DEFAULT: "rgba(255,255,255,0.08)",
-          strong: "rgba(255,255,255,0.14)",
+          subtle: "rgba(92,124,137,0.12)",
+          DEFAULT: "rgba(92,124,137,0.22)",
+          strong: "rgba(92,124,137,0.42)",
         },
         ink: {
-          DEFAULT: "#e2e2f0",
-          secondary: "#8585a8",
-          muted: "#4a4a68",
+          DEFAULT: "#242424",
+          secondary: "#4A6C7A",
+          muted: "#7A9DAB",
         },
         accent: {
-          DEFAULT: "#7c6ff7",
-          hover: "#8d82f8",
-          muted: "rgba(124,111,247,0.12)",
+          DEFAULT: "#1F4959",
+          hover: "#255e76",
+          muted: "rgba(31,73,89,0.07)",
         },
         emerald: {
           glow: "rgba(52,211,153,0.12)",

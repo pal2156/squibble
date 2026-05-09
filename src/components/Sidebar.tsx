@@ -1,90 +1,383 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { LayoutDashboard, Telescope, User, Zap } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LayoutDashboard, Telescope, User, Zap, PanelLeft, Inbox, LogOut, Settings, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/conversations", label: "Conversations", icon: Inbox },
   { href: "/campaign", label: "New Campaign", icon: Telescope },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
-export default function Sidebar() {
+const bottomNavItems = [
+  { label: "Settings", icon: Settings },
+  { label: "Help & Information", icon: HelpCircle },
+];
+
+interface UserRecord {
+  name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  gmail_token: string | null;
+}
+
+interface SidebarProps {
+  open: boolean;
+  onToggle: () => void;
+}
+
+export default function Sidebar({ open, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
+
+  const [userRecord, setUserRecord] = useState<UserRecord | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    async function loadUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("users")
+        .select("name, email, avatar_url, gmail_token")
+        .eq("id", user.id)
+        .single();
+
+      if (data) {
+        setUserRecord(data);
+      } else {
+        // Fallback to auth metadata if row not yet created
+        setUserRecord({
+          name: user.user_metadata?.full_name ?? null,
+          email: user.email ?? null,
+          avatar_url: user.user_metadata?.avatar_url ?? null,
+          gmail_token: null,
+        });
+      }
+    }
+    loadUser();
+  }, []);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!popoverOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(e.target as Node)
+      ) {
+        setPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [popoverOpen]);
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
 
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard" || pathname === "/";
     return pathname.startsWith(href);
   };
 
+  const initials = userRecord?.name
+    ? userRecord.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+
+  const displayName = userRecord?.name
+    ? userRecord.name.split(" ")[0] + (userRecord.name.split(" ")[1] ? " " + userRecord.name.split(" ")[1][0] + "." : "")
+    : "Loading...";
+
   return (
-    <aside className="fixed inset-y-0 left-0 w-[220px] flex flex-col border-r" style={{ borderColor: "var(--border-subtle)", background: "var(--bg-surface)" }}>
-      {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 py-5 mb-2">
-        <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "var(--accent-muted)" }}>
-          <Zap className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-        </div>
-        <span className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-          ProfNet
-        </span>
-        <span className="ml-auto text-[9px] font-medium px-1.5 py-0.5 rounded-full border" style={{ color: "var(--ink-muted)", borderColor: "var(--border-default)", background: "var(--border-subtle)" }}>
-          BETA
-        </span>
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 px-3 space-y-0.5">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const active = isActive(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
-                active
-                  ? "text-white"
-                  : "hover:bg-white/[0.04]"
-              )}
-              style={
-                active
-                  ? {
-                      background: "var(--accent-muted)",
-                      color: "var(--accent-hover)",
-                    }
-                  : { color: "var(--ink-secondary)" }
-              }
+    <>
+      <aside
+        className="fixed flex flex-col"
+        style={{
+          top: "16px",
+          left: "16px",
+          bottom: "16px",
+          width: open ? "220px" : "64px",
+          background: "#011425",
+          borderRadius: "16px",
+          border: "1px solid rgba(255,255,255,0.07)",
+          boxShadow: "0 8px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.3)",
+          transition: "width 0.25s ease",
+          zIndex: 40,
+          overflow: "hidden",
+        }}
+      >
+        {/* Logo row */}
+        <div className="flex items-center justify-between px-3 py-5 mb-2 flex-shrink-0" style={{ height: "64px" }}>
+          {open && (
+            <div
+              className="flex items-center gap-2"
+              style={{ whiteSpace: "nowrap", overflow: "hidden" }}
             >
-              <Icon
-                className={cn("w-[17px] h-[17px] flex-shrink-0 transition-colors")}
-                style={active ? { color: "var(--accent)" } : { color: "var(--ink-muted)" }}
-              />
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
+              <div
+                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(92,124,137,0.2)" }}
+              >
+                <Zap className="w-2.5 h-2.5" style={{ color: "#5C7C89" }} />
+              </div>
+              <span className="text-sm font-semibold tracking-tight" style={{ color: "#FFFFFF" }}>
+                Truble
+              </span>
+              <span
+                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border"
+                style={{
+                  color: "rgba(255,255,255,0.35)",
+                  borderColor: "rgba(255,255,255,0.1)",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                BETA
+              </span>
+            </div>
+          )}
 
-      {/* User badge */}
-      <div className="px-3 pb-5">
-        <div
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
-          style={{ background: "var(--border-subtle)" }}
-        >
-          <div
-            className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-            style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
-          >
-            PL
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-medium truncate" style={{ color: "var(--ink)" }}>Paul L.</p>
-            <p className="text-[11px] truncate" style={{ color: "var(--ink-muted)" }}>Columbia · Freshman</p>
+          {/* Toggle button */}
+          <div className={cn("relative group flex-shrink-0", !open && "mx-auto")}>
+            <button
+              onClick={onToggle}
+              className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(92,124,137,0.18)"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+            >
+              <PanelLeft className="w-4 h-4" />
+            </button>
+            <div
+              className="pointer-events-none absolute right-0 top-full mt-2 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 z-50"
+              style={{
+                background: "#1F4959",
+                color: "#FFFFFF",
+                transition: "opacity 0.15s ease",
+                boxShadow: "0 4px 12px rgba(1,20,37,0.25)",
+              }}
+            >
+              {open ? "Close sidebar" : "Open sidebar"}
+            </div>
           </div>
         </div>
-      </div>
-    </aside>
+
+        {/* Nav */}
+        <nav className="flex-1 px-2 space-y-0.5">
+          {navItems.map(({ href, label, icon: Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                title={!open ? label : undefined}
+                className={cn(
+                  "flex items-center rounded-lg text-sm font-medium transition-all duration-150",
+                  !active && "hover:bg-white/[0.06]",
+                  open ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
+                )}
+                style={{
+                  background: active ? "rgba(92,124,137,0.18)" : "transparent",
+                  color: active ? "#FFFFFF" : "rgba(255,255,255,0.7)",
+                }}
+              >
+                <Icon
+                  className="w-[17px] h-[17px] flex-shrink-0"
+                  style={{ color: active ? "#5C7C89" : "rgba(255,255,255,0.3)" }}
+                />
+                {open && (
+                  <span style={{ whiteSpace: "nowrap" }}>{label}</span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bottom nav items */}
+        <div className="px-2 pb-1 space-y-0.5 flex-shrink-0">
+          {bottomNavItems.map(({ label, icon: Icon }) => (
+            <button
+              key={label}
+              title={!open ? label : undefined}
+              className={cn(
+                "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150 hover:bg-white/[0.06]",
+                open ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
+              )}
+              style={{ color: "rgba(255,255,255,0.55)" }}
+            >
+              <Icon className="w-[17px] h-[17px] flex-shrink-0" style={{ color: "rgba(255,255,255,0.25)" }} />
+              {open && <span style={{ whiteSpace: "nowrap" }}>{label}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* User badge */}
+        <div className="px-2 pb-5 flex-shrink-0">
+          <button
+            ref={triggerRef}
+            onClick={() => setPopoverOpen((o) => !o)}
+            className="w-full flex items-center rounded-lg text-left transition-colors"
+            style={{
+              background: popoverOpen ? "rgba(92,124,137,0.14)" : "rgba(255,255,255,0.05)",
+              padding: open ? "10px 12px" : "10px",
+              justifyContent: open ? "flex-start" : "center",
+            }}
+            onMouseEnter={(e) => {
+              if (!popoverOpen) e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+            }}
+            onMouseLeave={(e) => {
+              if (!popoverOpen) e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+            }}
+          >
+            {userRecord?.avatar_url ? (
+              <img
+                src={userRecord.avatar_url}
+                alt={userRecord.name ?? ""}
+                className="w-7 h-7 rounded-full flex-shrink-0 object-cover"
+              />
+            ) : (
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                style={{ background: "rgba(92,124,137,0.25)", color: "#5C7C89" }}
+              >
+                {initials}
+              </div>
+            )}
+            {open && (
+              <div className="ml-3 min-w-0" style={{ whiteSpace: "nowrap" }}>
+                <p className="text-xs font-medium" style={{ color: "#FFFFFF" }}>{displayName}</p>
+                <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                  {userRecord?.email ?? ""}
+                </p>
+              </div>
+            )}
+          </button>
+        </div>
+      </aside>
+
+      {/* Popover — rendered outside aside so it's not clipped */}
+      {popoverOpen && (
+        <div
+          ref={popoverRef}
+          className="fixed rounded-xl shadow-2xl z-50"
+          style={{
+            bottom: "92px",
+            left: "24px",
+            width: "224px",
+            background: "#0a1e2e",
+            border: "1px solid rgba(255,255,255,0.09)",
+          }}
+        >
+          {/* Profile header */}
+          <div className="p-4 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+            <div className="flex items-center gap-3">
+              {userRecord?.avatar_url ? (
+                <img
+                  src={userRecord.avatar_url}
+                  alt={userRecord.name ?? ""}
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                  style={{ background: "rgba(92,124,137,0.25)", color: "#5C7C89" }}
+                >
+                  {initials}
+                </div>
+              )}
+              <div className="min-w-0">
+                <p
+                  className="text-sm font-medium truncate"
+                  style={{ color: "#FFFFFF" }}
+                >
+                  {userRecord?.name ?? "—"}
+                </p>
+                <p
+                  className="text-xs truncate"
+                  style={{ color: "rgba(255,255,255,0.4)" }}
+                >
+                  {userRecord?.email ?? ""}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Gmail status */}
+          <div className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "rgba(255,255,255,0.45)" }}>
+                Gmail
+              </span>
+              <span
+                className="flex items-center gap-1.5 text-xs font-medium"
+                style={{ color: userRecord?.gmail_token ? "#4ade80" : "rgba(255,255,255,0.3)" }}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{
+                    background: userRecord?.gmail_token ? "#4ade80" : "rgba(255,255,255,0.2)",
+                  }}
+                />
+                {userRecord?.gmail_token ? "Connected" : "Not connected"}
+              </span>
+            </div>
+          </div>
+
+          {/* Settings + Help */}
+          <div className="p-2 space-y-0.5">
+            {bottomNavItems.map(({ label, icon: Icon }) => (
+              <button
+                key={label}
+                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+                style={{ color: "rgba(255,255,255,0.6)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                  e.currentTarget.style.color = "#fff";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "transparent";
+                  e.currentTarget.style.color = "rgba(255,255,255,0.6)";
+                }}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Logout */}
+          <div className="px-2 pb-2 border-t" style={{ borderColor: "rgba(255,255,255,0.07)", paddingTop: "8px" }}>
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
+              style={{ color: "rgba(255,255,255,0.6)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                e.currentTarget.style.color = "#fff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.color = "rgba(255,255,255,0.6)";
+              }}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Log out
+            </button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

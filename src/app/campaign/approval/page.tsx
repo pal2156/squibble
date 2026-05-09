@@ -44,29 +44,37 @@ export default function ApprovalPage() {
     setEditing(null);
   };
 
+  const handleApproveAll = () => {
+    setStates((prev) => {
+      const next = { ...prev };
+      draftEmails.forEach((e) => { if (next[e.id] === "pending") next[e.id] = "approved"; });
+      return next;
+    });
+  };
+
   if (allDone) {
     const approved = Object.values(states).filter((s) => s === "approved").length;
     return (
       <div className="min-h-screen flex items-center justify-center px-6">
         <div className="text-center max-w-sm">
           <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6"
+            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5"
             style={{ background: "rgba(52,211,153,0.1)" }}
           >
-            <Send className="w-7 h-7" style={{ color: "#34d399" }} />
+            <Send className="w-5 h-5" style={{ color: "#34d399" }} />
           </div>
-          <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--ink)" }}>
+          <h2 className="text-xl font-bold mb-1.5" style={{ color: "var(--ink)" }}>
             Queue complete
           </h2>
           <p className="text-sm mb-1" style={{ color: "var(--ink-secondary)" }}>
             <span style={{ color: "#34d399", fontWeight: 600 }}>{approved} email{approved !== 1 ? "s" : ""}</span> approved and sent.
           </p>
-          <p className="text-sm mb-8" style={{ color: "var(--ink-muted)" }}>
+          <p className="text-xs mb-7" style={{ color: "var(--ink-muted)" }}>
             {total - approved} skipped.
           </p>
           <Link
             href="/dashboard"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
             style={{ background: "var(--accent)", color: "#fff" }}
           >
             View Dashboard
@@ -79,22 +87,22 @@ export default function ApprovalPage() {
   const prof = email.professor;
 
   return (
-    <div className="px-10 py-10 max-w-2xl mx-auto">
+    <div className="px-8 py-8 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-2.5">
           <Link
             href="/campaign/professors"
-            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white/[0.06]"
+            className="w-7 h-7 rounded-md flex items-center justify-center transition-colors hover:bg-black/[0.05]"
             style={{ color: "var(--ink-secondary)" }}
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
           </Link>
           <div>
-            <h1 className="text-xl font-bold" style={{ color: "var(--ink)" }}>
+            <h1 className="text-base font-bold" style={{ color: "var(--ink)" }}>
               Approval Queue
             </h1>
-            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
+            <p className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
               Review and send each email
             </p>
           </div>
@@ -134,11 +142,13 @@ export default function ApprovalPage() {
 
       {/* Email card */}
       <div
-        className="rounded-2xl border overflow-hidden transition-all duration-300"
+        className="rounded-xl border overflow-hidden transition-all duration-300"
         style={{
           background: justApproved ? "rgba(52,211,153,0.04)" : "var(--bg-card)",
           borderColor: justApproved ? "rgba(52,211,153,0.25)" : "var(--border-subtle)",
-          boxShadow: justApproved ? "0 0 32px rgba(52,211,153,0.1)" : "none",
+          boxShadow: justApproved
+            ? "0 0 28px rgba(52,211,153,0.1), 0 1px 3px rgba(0,0,0,0.06)"
+            : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
         {/* Professor header */}
@@ -200,18 +210,19 @@ export default function ApprovalPage() {
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
                 rows={14}
-                className="w-full text-sm leading-7 rounded-xl px-4 py-3 border resize-none"
+                className="w-full text-sm leading-7 rounded-lg px-3.5 py-3 border resize-none"
                 style={{
                   background: "var(--bg-elevated)",
                   borderColor: "var(--border-default)",
                   color: "var(--ink)",
                   outline: "none",
                   fontFamily: "inherit",
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
                 }}
               />
               <button
                 onClick={handleSaveEdit}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
+                className="text-xs font-semibold px-3 py-1.5 rounded-md transition-colors"
                 style={{ background: "var(--accent-muted)", color: "var(--accent-hover)" }}
               >
                 Done editing
@@ -227,10 +238,10 @@ export default function ApprovalPage() {
 
       {/* Actions */}
       {!justApproved && (
-        <div className="flex items-center gap-3 mt-5 animate-slide-up">
+        <div className="flex items-center gap-2.5 mt-4 animate-slide-up">
           <button
             onClick={handleApprove}
-            className="flex-1 flex items-center justify-center gap-2.5 py-3.5 rounded-xl text-sm font-semibold transition-all duration-150"
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold transition-all duration-150"
             style={{
               background: "rgba(52,211,153,0.1)",
               color: "#34d399",
@@ -238,20 +249,20 @@ export default function ApprovalPage() {
             }}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = "rgba(52,211,153,0.16)";
-              e.currentTarget.style.boxShadow = "0 0 20px rgba(52,211,153,0.15)";
+              e.currentTarget.style.boxShadow = "0 0 16px rgba(52,211,153,0.12)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.background = "rgba(52,211,153,0.1)";
               e.currentTarget.style.boxShadow = "none";
             }}
           >
-            <Check className="w-4 h-4" strokeWidth={2.5} />
+            <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
             Approve & Send
           </button>
 
           <button
             onClick={handleEdit}
-            className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl text-sm font-medium border transition-all duration-150"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-xs font-medium border transition-all duration-150"
             style={{
               background: "var(--bg-card)",
               borderColor: "var(--border-default)",
@@ -266,13 +277,13 @@ export default function ApprovalPage() {
               e.currentTarget.style.color = "var(--ink-secondary)";
             }}
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil className="w-3 h-3" />
             Edit
           </button>
 
           <button
             onClick={handleSkip}
-            className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl text-sm font-medium transition-all duration-150"
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-xs font-medium transition-all duration-150"
             style={{
               background: "transparent",
               color: "var(--ink-muted)",
@@ -286,7 +297,7 @@ export default function ApprovalPage() {
               e.currentTarget.style.background = "transparent";
             }}
           >
-            <SkipForward className="w-3.5 h-3.5" />
+            <SkipForward className="w-3 h-3" />
             Skip
           </button>
         </div>
@@ -308,6 +319,18 @@ export default function ApprovalPage() {
             {draftEmails[current + 1].professor.name} · {draftEmails[current + 1].professor.university}
           </p>
         </div>
+      )}
+
+      {current < draftEmails.length - 1 && !justApproved && (
+        <button
+          onClick={handleApproveAll}
+          className="w-full mt-3 py-2 text-xs font-medium rounded-xl transition-colors"
+          style={{ color: "var(--ink-muted)", background: "transparent" }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--ink-secondary)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--ink-muted)"; e.currentTarget.style.background = "transparent"; }}
+        >
+          Approve all remaining
+        </button>
       )}
     </div>
   );

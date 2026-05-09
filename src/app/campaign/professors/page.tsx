@@ -1,13 +1,100 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { professors, type Professor } from "@/lib/mock-data";
-import { ArrowRight, Check, Mail, Building2, FlaskConical } from "lucide-react";
+import { ArrowRight, Check, Mail, Building2, FlaskConical, GraduationCap } from "lucide-react";
+
+const DRAFT_MESSAGES = [
+  "Reading your profile...",
+  "Personalizing each email...",
+  "Reviewing for tone and fit...",
+  "Attaching your CV...",
+  "All set.",
+];
+
+const STEP = 2000;
+const FADE_START = 1500;
+
+function LoadingModal({ onClose }: { onClose: () => void }) {
+  const [index, setIndex] = useState(0);
+  const [fading, setFading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(true);
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    DRAFT_MESSAGES.forEach((_, i) => {
+      timers.push(setTimeout(() => setFading(true), i * STEP + FADE_START));
+      if (i < DRAFT_MESSAGES.length - 1) {
+        timers.push(setTimeout(() => { setIndex(i + 1); setFading(false); }, (i + 1) * STEP));
+      }
+    });
+
+    timers.push(setTimeout(() => setModalVisible(false), DRAFT_MESSAGES.length * STEP));
+    timers.push(setTimeout(onClose, DRAFT_MESSAGES.length * STEP + 300));
+
+    return () => timers.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div
+      className="fixed inset-0 flex items-center justify-center z-50"
+      style={{
+        background: "rgba(14, 22, 28, 0.45)",
+        backdropFilter: "blur(4px)",
+        opacity: modalVisible ? 1 : 0,
+        transition: "opacity 300ms ease",
+      }}
+    >
+      <div
+        className="rounded-2xl px-10 py-10 flex flex-col items-center gap-7 shadow-2xl"
+        style={{
+          background: "var(--bg-card)",
+          border: "1px solid var(--border-subtle)",
+          minWidth: 320,
+        }}
+      >
+        <div className="flex items-center gap-2.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="block w-2 h-2 rounded-full"
+              style={{
+                background: "var(--accent)",
+                animation: `pulse-dot 1.2s ease-in-out ${i * 0.18}s infinite`,
+              }}
+            />
+          ))}
+        </div>
+
+        <p
+          className="text-sm font-medium text-center"
+          style={{
+            color: "var(--ink-secondary)",
+            opacity: fading ? 0 : 1,
+            transition: "opacity 420ms ease",
+            minWidth: 240,
+          }}
+        >
+          {DRAFT_MESSAGES[index]}
+        </p>
+      </div>
+
+      <style>{`
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 0.2; transform: scale(0.8); }
+          50%       { opacity: 1;   transform: scale(1);   }
+        }
+      `}</style>
+    </div>
+  );
+}
 
 function fitScoreStyle(score: number): { bg: string; text: string; border: string } {
   if (score >= 90) return { bg: "rgba(52,211,153,0.1)", text: "#34d399", border: "rgba(52,211,153,0.2)" };
-  if (score >= 85) return { bg: "rgba(124,111,247,0.1)", text: "#a78bfa", border: "rgba(124,111,247,0.2)" };
+  if (score >= 85) return { bg: "rgba(92,124,137,0.12)", text: "#5C7C89", border: "rgba(92,124,137,0.25)" };
   if (score >= 80) return { bg: "rgba(59,130,246,0.1)", text: "#60a5fa", border: "rgba(59,130,246,0.2)" };
   return { bg: "rgba(251,191,36,0.08)", text: "#fbbf24", border: "rgba(251,191,36,0.15)" };
 }
@@ -34,11 +121,13 @@ function ProfessorCard({
   return (
     <button
       onClick={onToggle}
-      className="w-full text-left rounded-2xl border p-5 transition-all duration-150 group relative"
+      className="w-full text-left rounded-xl border p-4 transition-all duration-150 group relative"
       style={{
-        background: selected ? "rgba(124,111,247,0.04)" : "var(--bg-card)",
-        borderColor: selected ? "rgba(124,111,247,0.25)" : "var(--border-subtle)",
-        boxShadow: selected ? "0 0 0 1px rgba(124,111,247,0.15)" : "none",
+        background: selected ? "rgba(31,73,89,0.04)" : "var(--bg-card)",
+        borderColor: selected ? "#5C7C89" : "var(--border-subtle)",
+        boxShadow: selected
+          ? "0 0 0 1px rgba(92,124,137,0.18), 0 1px 3px rgba(0,0,0,0.06)"
+          : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
       {/* Rank */}
@@ -70,7 +159,7 @@ function ProfessorCard({
           {/* Name + badge */}
           <div className="flex items-start gap-2.5 flex-wrap mb-1">
             <h3 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
-              {professor.name}
+              {professor.name.replace(/^Prof\.\s*/i, "")}
             </h3>
             <span
               className="inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full border"
@@ -84,8 +173,8 @@ function ProfessorCard({
             </span>
           </div>
 
-          {/* University + dept */}
-          <div className="flex items-center gap-3 mb-2.5">
+          {/* University + dept + title */}
+          <div className="flex items-center gap-3 mb-2.5 flex-wrap">
             <span className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--ink-secondary)" }}>
               <Building2 className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
               {professor.university}
@@ -95,6 +184,15 @@ function ProfessorCard({
               <FlaskConical className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
               {professor.department}
             </span>
+            {professor.title && (
+              <>
+                <span className="w-px h-3" style={{ background: "var(--border-default)" }} />
+                <span className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--ink-secondary)" }}>
+                  <GraduationCap className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
+                  {professor.title}
+                </span>
+              </>
+            )}
           </div>
 
           {/* Description */}
@@ -131,6 +229,7 @@ export default function ProfessorsPage() {
   const [selected, setSelected] = useState<Set<string>>(
     new Set(professors.filter((p) => p.selected).map((p) => p.id))
   );
+  const [showModal, setShowModal] = useState(false);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -144,34 +243,35 @@ export default function ProfessorsPage() {
   const selectedCount = selected.size;
 
   return (
-    <div className="px-10 py-10 max-w-3xl mx-auto">
+    <div className="px-8 py-8 max-w-3xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-1.5" style={{ color: "var(--ink)" }}>
-              Professor Rankings
+            <h1 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
+              Your best shots
             </h1>
-            <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
-              Ranked by research alignment with your profile. Select who to reach out to.
+            <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
+              Ranked by research fit and likelihood to respond. Select who to contact.
             </p>
           </div>
           <div
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs"
             style={{
               background: "var(--bg-card)",
               border: "1px solid var(--border-subtle)",
               color: "var(--ink-secondary)",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
             }}
           >
-            <span style={{ color: "var(--ink)" }}>{selectedCount}</span>
+            <span style={{ color: "var(--ink)", fontWeight: 600 }}>{selectedCount}</span>
             <span>of {professors.length} selected</span>
           </div>
         </div>
       </div>
 
       {/* List */}
-      <div className="space-y-3 mb-8">
+      <div className="space-y-2.5 mb-6">
         {professors.map((prof, i) => (
           <ProfessorCard
             key={prof.id}
@@ -185,33 +285,26 @@ export default function ProfessorsPage() {
 
       {/* CTA */}
       <div
-        className="sticky bottom-6 flex items-center justify-between gap-4 px-5 py-4 rounded-2xl border backdrop-blur-xl"
+        className="sticky bottom-5 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border backdrop-blur-xl"
         style={{
-          background: "rgba(13,13,26,0.85)",
-          borderColor: "var(--border-strong)",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          background: "rgba(255,255,255,0.96)",
+          borderColor: "var(--border-default)",
+          boxShadow: "0 -4px 20px rgba(31,73,89,0.07), 0 0 0 1px rgba(92,124,137,0.1)",
         }}
       >
-        <div>
-          <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>
-            {selectedCount === 0
-              ? "Select professors to continue"
-              : `${selectedCount} professor${selectedCount !== 1 ? "s" : ""} selected`}
-          </p>
-          <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
-            Claude will write personalized emails for each
-          </p>
-        </div>
+        <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
+          {selectedCount === 0 ? "Select professors to continue" : `${selectedCount} selected`}
+        </p>
         <button
-          onClick={() => selectedCount > 0 && router.push("/campaign/approval")}
+          onClick={() => selectedCount > 0 && setShowModal(true)}
           disabled={selectedCount === 0}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
           style={
             selectedCount > 0
               ? {
                   background: "var(--accent)",
                   color: "#fff",
-                  boxShadow: "0 0 20px rgba(124,111,247,0.3)",
+                  boxShadow: "0 0 16px rgba(31,73,89,0.5)",
                 }
               : {
                   background: "var(--bg-elevated)",
@@ -220,9 +313,11 @@ export default function ProfessorsPage() {
           }
         >
           Draft Emails
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {showModal && <LoadingModal onClose={() => router.push("/campaign/approval")} />}
     </div>
   );
 }

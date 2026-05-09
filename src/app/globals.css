@@ -3,19 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --bg-base: #07070f;
-  --bg-surface: #0d0d1a;
-  --bg-card: #111120;
-  --bg-elevated: #161628;
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-default: rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --ink: #e2e2f0;
-  --ink-secondary: #8585a8;
-  --ink-muted: #4a4a68;
-  --accent: #7c6ff7;
-  --accent-hover: #8d82f8;
-  --accent-muted: rgba(124, 111, 247, 0.12);
+  --bg-base: #EEF5F8;
+  --bg-surface: #E4EFF4;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #D6E8EF;
+  --border-subtle: rgba(92, 124, 137, 0.12);
+  --border-default: rgba(92, 124, 137, 0.22);
+  --border-strong: rgba(92, 124, 137, 0.42);
+  --ink: #242424;
+  --ink-secondary: #4A6C7A;
+  --ink-muted: #7A9DAB;
+  --accent: #1F4959;
+  --accent-hover: #255e76;
+  --accent-muted: rgba(31, 73, 89, 0.07);
 }
 
 * {
@@ -40,16 +40,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(92, 124, 137, 0.25);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(92, 124, 137, 0.45);
 }
 
 /* Selection */
 ::selection {
-  background: rgba(124, 111, 247, 0.3);
+  background: rgba(31, 73, 89, 0.18);
 }
 
 /* Focus ring */
