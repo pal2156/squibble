@@ -38,8 +38,10 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
 
   const [userRecord, setUserRecord] = useState<UserRecord | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [btnHovered, setBtnHovered] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     async function loadUser() {
@@ -102,6 +104,9 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
     ? userRecord.name.split(" ")[0] + (userRecord.name.split(" ")[1] ? " " + userRecord.name.split(" ")[1][0] + "." : "")
     : "Loading...";
 
+  // Compute fixed-position coords for the tooltip so it escapes overflow:hidden
+  const toggleRect = btnHovered ? toggleRef.current?.getBoundingClientRect() : undefined;
+
   return (
     <>
       <aside
@@ -150,27 +155,17 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           )}
 
           {/* Toggle button */}
-          <div className={cn("relative group flex-shrink-0", !open && "mx-auto")}>
+          <div className={cn("flex-shrink-0", !open && "mx-auto")}>
             <button
+              ref={toggleRef}
               onClick={onToggle}
               className="w-7 h-7 rounded-md flex items-center justify-center transition-colors"
               style={{ color: "rgba(255,255,255,0.4)" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(92,124,137,0.18)"; e.currentTarget.style.color = "#fff"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
+              onMouseEnter={(e) => { setBtnHovered(true); e.currentTarget.style.background = "rgba(92,124,137,0.18)"; e.currentTarget.style.color = "#fff"; }}
+              onMouseLeave={(e) => { setBtnHovered(false); e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}
             >
-              <PanelLeft className="w-4 h-4" />
+              <PanelLeft className="w-4 h-4 flex-shrink-0" />
             </button>
-            <div
-              className="pointer-events-none absolute right-0 top-full mt-2 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 z-50"
-              style={{
-                background: "#1F4959",
-                color: "#FFFFFF",
-                transition: "opacity 0.15s ease",
-                boxShadow: "0 4px 12px rgba(1,20,37,0.25)",
-              }}
-            >
-              {open ? "Close sidebar" : "Open sidebar"}
-            </div>
           </div>
         </div>
 
@@ -267,6 +262,23 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
         </div>
       </aside>
 
+      {/* Tooltip — fixed so it escapes overflow:hidden and overlaps the sidebar edge */}
+      {btnHovered && toggleRect && (
+        <div
+          className="pointer-events-none fixed z-50 px-2.5 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap"
+          style={{
+            top: toggleRect.bottom + 8,
+            left: toggleRect.left + toggleRect.width / 2,
+            transform: "translateX(-50%)",
+            background: "#1F4959",
+            color: "#FFFFFF",
+            boxShadow: "0 4px 12px rgba(1,20,37,0.25)",
+          }}
+        >
+          {open ? "Close sidebar" : "Open sidebar"}
+        </div>
+      )}
+
       {/* Popover — rendered outside aside so it's not clipped */}
       {popoverOpen && (
         <div
@@ -335,30 +347,8 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
             </div>
           </div>
 
-          {/* Settings + Help */}
-          <div className="p-2 space-y-0.5">
-            {bottomNavItems.map(({ label, icon: Icon }) => (
-              <button
-                key={label}
-                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
-                style={{ color: "rgba(255,255,255,0.6)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "#fff";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "rgba(255,255,255,0.6)";
-                }}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
-          </div>
-
           {/* Logout */}
-          <div className="px-2 pb-2 border-t" style={{ borderColor: "rgba(255,255,255,0.07)", paddingTop: "8px" }}>
+          <div className="px-2 py-2">
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"

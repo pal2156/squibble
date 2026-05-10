@@ -223,6 +223,9 @@ function ProfessorCard({
   );
 }
 
+// TODO: Replace with values from campaign form once data is passed via URL params or state
+const MOCK_CAMPAIGN_TITLE = "Columbia Condensed Matter, Summer 2025";
+
 export default function ProfessorsPage() {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(
@@ -243,13 +246,20 @@ export default function ProfessorsPage() {
 
   return (
     <div className="px-8 py-8 max-w-3xl mx-auto">
+      {/* Campaign title */}
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold tracking-tight" style={{ color: "var(--ink)" }}>
+          {MOCK_CAMPAIGN_TITLE}
+        </h1>
+      </div>
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
+            <h2 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
               Your best shots
-            </h1>
+            </h2>
             <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
               Ranked by research fit and likelihood to respond. Select who to contact.
             </p>

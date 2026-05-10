@@ -214,7 +214,7 @@ export default function DashboardPage() {
     <div className="flex-1 min-w-0 overflow-y-auto">
     <div className="px-8 py-8 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-6 text-center">
         <h1 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
           Hello, {firstName || "there"}.
         </h1>

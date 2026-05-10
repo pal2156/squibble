@@ -125,6 +125,8 @@ export default function CampaignPage() {
   const [timeCommitment, setTimeCommitment] = useState("");
   const [availability, setAvailability] = useState("");
   const [locationPref, setLocationPref] = useState("");
+  const [contactCount, setContactCount] = useState(10);
+  const [rawCount, setRawCount] = useState("10");
   const [showModal, setShowModal] = useState(false);
 
   const ready = university.trim() && research.trim();
@@ -158,7 +160,7 @@ export default function CampaignPage() {
               <textarea
                 value={research}
                 onChange={(e) => setResearch(e.target.value)}
-                placeholder="What do you want to research?"
+                placeholder="e.g. Condensed matter physics or Behavioral economics"
                 rows={4}
                 className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none"
                 style={inputStyle(!!research)}
@@ -221,6 +223,45 @@ export default function CampaignPage() {
               </select>
             </div>
           </div>
+        </div>
+
+        {/* Researcher count */}
+        <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>
+              How many researchers would you like us to find?
+            </p>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={rawCount}
+              onChange={(e) => setRawCount(e.target.value)}
+              onBlur={() => {
+                const n = parseInt(rawCount, 10);
+                const clamped = isNaN(n) || n < 1 ? 1 : n > 20 ? 20 : n;
+                setContactCount(clamped);
+                setRawCount(String(clamped));
+              }}
+              className="text-3xl font-bold text-center w-14 rounded-lg bg-transparent border-0 focus:outline-none cursor-pointer"
+              style={{ color: "var(--accent)" }}
+            />
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={20}
+            value={contactCount}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setContactCount(n);
+              setRawCount(String(n));
+            }}
+            className="w-full cursor-pointer"
+            style={{ accentColor: "var(--accent)" }}
+          />
+          <p className="text-xs mt-3" style={{ color: "var(--ink-secondary)" }}>
+            Up to 20 researchers per campaign.
+          </p>
         </div>
 
         <button
