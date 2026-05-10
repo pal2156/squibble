@@ -1,10 +1,24 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { sentEmails, type EmailStatus, type SentEmail } from "@/lib/mock-data";
 import { TrendingUp, Send, MessageSquare, Layers, ChevronUp, ChevronDown, Search, ChevronRight, Calendar, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ChartRow } from "@/components/ChartRow";
+
+type EmailStatus = "Positive Reply" | "No Response" | "Negative Reply";
+
+interface SentEmail {
+  id: string;
+  professor: string;
+  university: string;
+  department: string;
+  campaign: string;
+  dateSent: string;
+  status: EmailStatus;
+  subject: string;
+  body: string;
+  reply?: { date: string; body: string };
+}
 
 type SortCol = "professor" | "university" | "department" | "campaign" | "dateSent" | "status";
 type SortDir = "asc" | "desc";
@@ -67,19 +81,28 @@ function dateMatchesExact(dateSent: string, parsed: { month: number; day: number
 }
 
 export default function DashboardPage() {
+  const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+
+  useEffect(() => {
+    fetch("/api/dashboard")
+      .then((r) => r.json())
+      .then(({ emails }) => { if (emails) setSentEmails(emails); })
+      .catch(() => {});
+  }, []);
+
   const totalSent = sentEmails.length;
   const positiveReplies = sentEmails.filter((e) => e.status === "Positive Reply").length;
   const replied = sentEmails.filter((e) => e.status !== "No Response").length;
-  const responseRate = Math.round((replied / totalSent) * 100);
+  const responseRate = totalSent > 0 ? Math.round((replied / totalSent) * 100) : 0;
   const campaigns = [...new Set(sentEmails.map((e) => e.campaign))].length;
 
   const uniqueCampaigns = useMemo(
     () => [...new Set(sentEmails.map((e) => e.campaign))].sort(),
-    []
+    [sentEmails]
   );
   const uniqueUniversities = useMemo(
     () => [...new Set(sentEmails.map((e) => e.university))].sort(),
-    []
+    [sentEmails]
   );
 
   const [sortCol, setSortCol] = useState<SortCol>("dateSent");
@@ -199,7 +222,7 @@ export default function DashboardPage() {
     });
 
     return rows;
-  }, [sortCol, sortDir, statusFilter, search, monthInput, dayInput, yearInput, campaignFilter, universityFilter]);
+  }, [sentEmails, sortCol, sortDir, statusFilter, search, monthInput, dayInput, yearInput, campaignFilter, universityFilter]);
 
   const stats = [
     { label: "Emails Sent", value: totalSent, icon: Send, color: "#60a5fa", bg: "rgba(59,130,246,0.08)" },

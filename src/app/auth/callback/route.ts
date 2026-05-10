@@ -11,13 +11,32 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error && data.session) {
-      // Store the provider token so we can track Gmail connection status
+      // Store access token + refresh token for server-side Gmail API calls
+      const updates: Record<string, string | null> = {};
       if (data.session.provider_token) {
+        updates.gmail_token = data.session.provider_token;
+      }
+      if (data.session.provider_refresh_token) {
+        updates.gmail_refresh_token = data.session.provider_refresh_token;
+      }
+
+      if (Object.keys(updates).length > 0) {
         await supabase
           .from("users")
-          .update({ gmail_token: data.session.provider_token })
+          .update(updates)
           .eq("id", data.session.user.id);
       }
+
+      // Register Gmail Pub/Sub watch so we receive reply notifications.
+      // Best-effort: don't block the redirect if it fails.
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? origin;
+      fetch(`${appUrl}/api/gmail/watch`, {
+        method: "POST",
+        headers: {
+          cookie: request.headers.get("cookie") ?? "",
+        },
+      }).catch(() => {});
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

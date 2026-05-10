@@ -43,3 +43,115 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 5. Add refresh token column to users table (run if users table already exists)
+alter table public.users add column if not exists gmail_refresh_token text;
+
+-- ─────────────────────────────────────────────
+-- PHASE 1 TABLES — run after the above
+-- ─────────────────────────────────────────────
+
+-- 6. Profiles
+create table if not exists public.profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade unique,
+  name text,
+  school text,
+  year text,
+  major text,
+  coursework text,
+  experience text,
+  skills text,
+  extracurriculars text,
+  anything_else text,
+  cv_text text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+alter table public.profiles enable row level security;
+create policy "own" on public.profiles for all using (auth.uid() = user_id);
+
+-- 7. Campaigns
+create table if not exists public.campaigns (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  title text,
+  university text,
+  research_interest text,
+  position_type text,
+  time_commitment text,
+  availability text,
+  location_preference text,
+  professor_count int default 10,
+  status text default 'active',
+  created_at timestamptz default now()
+);
+
+alter table public.campaigns enable row level security;
+create policy "own" on public.campaigns for all using (auth.uid() = user_id);
+
+-- 8. Professors
+create table if not exists public.professors (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid references public.campaigns(id) on delete cascade,
+  name text not null,
+  department text,
+  university text,
+  title text,
+  description text,
+  email text,
+  fit_score int,
+  research_areas text[],
+  selected boolean default false,
+  created_at timestamptz default now()
+);
+
+alter table public.professors enable row level security;
+create policy "own" on public.professors for all
+  using (campaign_id in (select id from public.campaigns where user_id = auth.uid()));
+
+-- 9. Emails
+create table if not exists public.emails (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  campaign_id uuid references public.campaigns(id),
+  professor_id uuid references public.professors(id),
+  professor_name text,
+  university text,
+  department text,
+  subject text,
+  body text,
+  status text default 'draft',
+  gmail_message_id text,
+  gmail_thread_id text,
+  sent_at timestamptz,
+  created_at timestamptz default now()
+);
+
+alter table public.emails enable row level security;
+create policy "own" on public.emails for all using (auth.uid() = user_id);
+
+-- 10. Replies
+create table if not exists public.replies (
+  id uuid primary key default gen_random_uuid(),
+  email_id uuid references public.emails(id) on delete cascade unique,
+  body text,
+  classification text,
+  received_at timestamptz default now()
+);
+
+alter table public.replies enable row level security;
+create policy "own" on public.replies for all
+  using (email_id in (select id from public.emails where user_id = auth.uid()));
+
+-- 11. Gmail watch state
+create table if not exists public.gmail_watch (
+  user_id uuid references auth.users(id) primary key,
+  history_id text,
+  expiration bigint,
+  updated_at timestamptz default now()
+);
+
+alter table public.gmail_watch enable row level security;
+create policy "own" on public.gmail_watch for all using (auth.uid() = user_id);

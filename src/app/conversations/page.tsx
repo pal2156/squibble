@@ -1,8 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { sentEmails, type SentEmail, type EmailStatus } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
 import { Building2, CornerDownLeft, Send } from "lucide-react";
+
+type EmailStatus = "Positive Reply" | "No Response" | "Negative Reply";
+
+interface SentEmail {
+  id: string;
+  professor: string;
+  university: string;
+  department: string;
+  dateSent: string;
+  status: EmailStatus;
+  subject: string;
+  body: string;
+  reply?: { date: string; body: string };
+}
 
 const statusConfig: Record<EmailStatus, { label: string; dot: string; bg: string; text: string }> = {
   "Positive Reply": { label: "Positive Reply", dot: "#10b981", bg: "rgba(16,185,129,0.1)", text: "#34d399" },
@@ -27,59 +40,31 @@ function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2);
 }
 
-const conversations: SentEmail[] = sentEmails
-  .filter((e) => e.reply != null)
-  .sort((a, b) => new Date(b.reply!.date).getTime() - new Date(a.reply!.date).getTime());
-
-const replyDrafts: Record<string, string> = {
-  s1: `Dear Professor Volkov,
-
-Thank you for getting back to me — I really appreciate it. I'll plan to stop by Pupin 936 during your office hours this Tuesday. Looking forward to learning more about the lab's current direction.
-
-Best,
-Paul Lacarrière
-Columbia University, Class of 2028
-paul.a.lacarriere@columbia.edu`,
-  s4: `Dear Professor Moretti,
-
-Thank you for letting me know, and for taking the time to respond. I completely understand — I'll reach out again in the fall to check in about any spring openings.
-
-Best,
-Paul Lacarrière
-Columbia University, Class of 2028`,
-  s9: `Dear Professor Nakamura,
-
-Thank you — I'm glad to hear there might be a fit. I've attached my transcript below. I'm available most mornings next week (Monday–Friday, 9am–12pm ET) and happy to work around your schedule for a call.
-
-Looking forward to connecting.
-
-Best,
-Paul Lacarrière
-Columbia University, Class of 2028
-paul.a.lacarriere@columbia.edu`,
-  s11: `Dear Professor Kim,
-
-Thank you for taking the time to respond. I completely understand — I'll focus on the coursework and plan to reach out again next year.
-
-Best,
-Paul Lacarrière
-Columbia University, Class of 2028`,
-};
-
 export default function ConversationsPage() {
-  const [selected, setSelected] = useState<SentEmail | null>(
-    conversations.length > 0 ? conversations[0] : null
-  );
+  const [conversations, setConversations] = useState<SentEmail[]>([]);
+  const [selected, setSelected] = useState<SentEmail | null>(null);
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
+
+  useEffect(() => {
+    fetch("/api/conversations")
+      .then((r) => r.json())
+      .then(({ conversations: data }) => {
+        if (data && data.length > 0) {
+          setConversations(data);
+          setSelected(data[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   function selectConversation(conv: SentEmail) {
     setSelected(conv);
     setShowReply(false);
   }
 
-  function openReply(email: SentEmail) {
-    setReplyText(replyDrafts[email.id] ?? "");
+  function openReply(_email: SentEmail) {
+    setReplyText("");
     setShowReply(true);
   }
 

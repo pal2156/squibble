@@ -1,19 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { student } from "@/lib/mock-data";
 import { ArrowRight } from "lucide-react";
+import { useState, useEffect } from "react";
 
 export default function ProfileCompletePage() {
+  const [firstName, setFirstName] = useState("there");
+
+  useEffect(() => {
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then(({ profile }) => {
+        if (profile?.name) {
+          setFirstName(profile.name.split(" ")[0]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-lg">
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight mb-3" style={{ color: "var(--ink)" }}>
-            You're all set, {student.name.split(" ")[0]}. Your profile is saved. Now let's put it to work.
+            You&apos;re all set, {firstName}. Your profile is saved. Now let&apos;s put it to work.
           </h1>
           <p className="text-sm mb-2" style={{ color: "var(--ink-secondary)" }}>
-            Tell us what you want to research and which university to target. We'll handle the rest.
+            Tell us what you want to research and which university to target. We&apos;ll handle the rest.
           </p>
           <p className="text-xs" style={{ color: "var(--ink-muted)" }}>
             A campaign targets faculty at one university in your field. You can run multiple campaigns.

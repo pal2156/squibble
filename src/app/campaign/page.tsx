@@ -1,55 +1,25 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
-const MESSAGES = [
-  "Finding the right department...",
-  "Reading through the faculty...",
-  "Matching professors to your profile...",
-  "Almost there...",
-];
-
-// Each step: visible for 2000ms, then 500ms fade out = 2500ms per message
-// Last message: visible for 2000ms, fades out 500ms, then modal closes
-const STEP = 2500;
-const FADE_START = 2000;
-
-function LoadingModal({ onClose }: { onClose: () => void }) {
-  const [index, setIndex] = useState(0);
-  const [fading, setFading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(true);
-
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-
-    MESSAGES.forEach((_, i) => {
-      // Fade out each message before switching (including the last one)
-      timers.push(setTimeout(() => setFading(true), i * STEP + FADE_START));
-
-      if (i < MESSAGES.length - 1) {
-        // Switch to next message and fade in
-        timers.push(setTimeout(() => { setIndex(i + 1); setFading(false); }, (i + 1) * STEP));
-      }
-    });
-
-    // After last message fades, fade out the modal then close
-    timers.push(setTimeout(() => setModalVisible(false), MESSAGES.length * STEP));
-    timers.push(setTimeout(onClose, MESSAGES.length * STEP + 300));
-
-    return () => timers.forEach(clearTimeout);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+function LoadingModal({
+  message,
+  visible,
+}: {
+  message: string;
+  visible: boolean;
+}) {
   return (
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
         background: "rgba(14, 22, 28, 0.45)",
         backdropFilter: "blur(4px)",
-        opacity: modalVisible ? 1 : 0,
+        opacity: visible ? 1 : 0,
         transition: "opacity 300ms ease",
+        pointerEvents: visible ? "auto" : "none",
       }}
     >
       <div
@@ -60,7 +30,6 @@ function LoadingModal({ onClose }: { onClose: () => void }) {
           minWidth: 320,
         }}
       >
-        {/* Pulsing dots */}
         <div className="flex items-center gap-2.5">
           {[0, 1, 2].map((i) => (
             <span
@@ -73,21 +42,13 @@ function LoadingModal({ onClose }: { onClose: () => void }) {
             />
           ))}
         </div>
-
-        {/* Message */}
         <p
           className="text-sm font-medium text-center"
-          style={{
-            color: "var(--ink-secondary)",
-            opacity: fading ? 0 : 1,
-            transition: "opacity 420ms ease",
-            minWidth: 240,
-          }}
+          style={{ color: "var(--ink-secondary)", minWidth: 240 }}
         >
-          {MESSAGES[index]}
+          {message}
         </p>
       </div>
-
       <style>{`
         @keyframes pulse-dot {
           0%, 100% { opacity: 0.2; transform: scale(0.8); }
@@ -127,9 +88,81 @@ export default function CampaignPage() {
   const [locationPref, setLocationPref] = useState("");
   const [contactCount, setContactCount] = useState(10);
   const [rawCount, setRawCount] = useState("10");
-  const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [progressMessage, setProgressMessage] = useState("Finding the right department...");
+  const [error, setError] = useState<string | null>(null);
 
   const ready = university.trim() && research.trim();
+
+  const handleFindFaculty = async () => {
+    if (!ready || loading) return;
+    setError(null);
+    setLoading(true);
+    setProgressMessage("Creating campaign...");
+
+    try {
+      // Step 1: Create campaign in Supabase
+      const createRes = await fetch("/api/campaign/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          university,
+          research_interest: research,
+          position_type: positionType || null,
+          time_commitment: timeCommitment || null,
+          availability: availability || null,
+          location_preference: locationPref || null,
+          professor_count: contactCount,
+        }),
+      });
+
+      const createData = await createRes.json();
+      if (!createRes.ok) throw new Error(createData.error ?? "Failed to create campaign");
+
+      const campaignId: string = createData.campaign.id;
+      setProgressMessage("Finding the right department...");
+
+      // Step 2: Stream faculty finding via SSE
+      const res = await fetch("/api/campaign/find-faculty", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId }),
+      });
+
+      if (!res.ok) throw new Error("Faculty search failed");
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            if (event.type === "progress") setProgressMessage(event.message);
+            if (event.type === "error") throw new Error(event.message);
+            if (event.type === "done") {
+              router.push(`/campaign/professors?campaignId=${campaignId}`);
+              return;
+            }
+          } catch (e) {
+            if (e instanceof Error && e.message !== "Unexpected end of JSON input") throw e;
+          }
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -139,11 +172,10 @@ export default function CampaignPage() {
             New campaign
           </h1>
           <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
-            We'll find the right faculty, write every email, send them, and track every response.
+            We&apos;ll find the right faculty, write every email, send them, and track every response.
           </p>
         </div>
 
-        {/* Two-column form */}
         <div className="flex flex-col sm:flex-row gap-5 mb-6">
           {/* Left: Campaign scope */}
           <div className="flex-1 rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
@@ -192,8 +224,8 @@ export default function CampaignPage() {
               >
                 <option value="" disabled>Time commitment</option>
                 <option>Full-time (40+ hrs/week)</option>
-                <option>Part-time (10–20 hrs/week)</option>
-                <option>Part-time (20–30 hrs/week)</option>
+                <option>Part-time (10-20 hrs/week)</option>
+                <option>Part-time (20-30 hrs/week)</option>
                 <option>Flexible</option>
               </select>
 
@@ -264,12 +296,16 @@ export default function CampaignPage() {
           </p>
         </div>
 
+        {error && (
+          <p className="text-xs mb-4 text-center" style={{ color: "#f87171" }}>{error}</p>
+        )}
+
         <button
-          onClick={() => { if (ready) setShowModal(true); }}
-          disabled={!ready}
+          onClick={handleFindFaculty}
+          disabled={!ready || loading}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
           style={
-            ready
+            ready && !loading
               ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 24px rgba(31,73,89,0.5)" }
               : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
           }
@@ -279,7 +315,7 @@ export default function CampaignPage() {
         </button>
       </div>
 
-      {showModal && <LoadingModal onClose={() => router.push("/campaign/professors")} />}
+      <LoadingModal message={progressMessage} visible={loading} />
     </div>
   );
 }
