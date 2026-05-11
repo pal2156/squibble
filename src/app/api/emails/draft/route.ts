@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, extractJsonString } from "@/lib/anthropic";
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -65,19 +65,19 @@ export async function POST(request: Request) {
 
   for (const prof of professors) {
     const userPrompt = `
-Write a cold email from a student to a professor requesting a research position.
+Write a cold email from the student below to Professor ${prof.name}, requesting a research position.
 
-Student profile:
+STUDENT PROFILE (use this exact data — no placeholders, no invented details):
 ${profileSummary}
 
-Campaign details:
+CAMPAIGN DETAILS:
 - Research interest: ${campaign.research_interest}
-- Position type: ${campaign.position_type ?? "any"}
+- Position type: ${campaign.position_type ?? "research position"}
 - Time commitment: ${campaign.time_commitment ?? "flexible"}
 - Availability: ${campaign.availability ?? "to be discussed"}
 - Location preference: ${campaign.location_preference ?? "no preference"}
 
-Professor:
+PROFESSOR:
 - Name: ${prof.name}
 - University: ${prof.university ?? campaign.university}
 - Department: ${prof.department ?? ""}
@@ -85,34 +85,48 @@ Professor:
 - Research description: ${prof.description ?? ""}
 - Research areas: ${(prof.research_areas ?? []).join(", ")}
 
-Email structure:
-1. Personal intro: year, school, major (one sentence)
-2. 1-2 sentences specific to THIS professor's research (reference their actual work)
-3. What the student brings: relevant experience, skills, or coursework (be specific)
-4. Availability and position ask (brief, clear)
-5. Polite close with thanks
+EMAIL STRUCTURE:
+1. Subject line: "Undergraduate Research Inquiry, [specific topic from professor's research]"
+2. Greeting: "Dear Professor [Last Name],"
+3. Personal intro (1-2 sentences): state the student's actual year, school, and major from the profile above. Conversational, not robotic.
+4. Research connection (2-3 sentences): draw a direct line between the student's interests and this professor's specific research. Reference particular aspects of their work, named projects, methods, or research areas. Be specific, not generic.
+5. Student value (2-3 sentences): connect the student's ACTUAL coursework (name the courses), ACTUAL research experience (describe it), and ACTUAL skills to what the professor's lab needs. Use real details from the profile. If the student coded or built something relevant, mention it specifically.
+6. Availability and ask (1-2 sentences): use the exact availability from campaign data and the position type. Ask if the professor has openings.
+7. Close: "Thank you for your time and consideration." then "Sincerely," then the student's name from the profile.
 
-Rules:
-- Never use em dashes. Use commas, periods, or rewrite instead.
-- Tone: warm, direct, professional. Not sycophantic.
-- Length: 150-200 words for the body.
-- Subject line: concise (under 10 words). e.g. "Undergraduate Research Inquiry, [Lab Focus]"
+ABSOLUTE RULES:
+- NEVER use placeholders like [year], [major], [university], [your experience], [relevant coursework], or any bracketed text. Every field must be filled with real data from the student profile.
+- NEVER write generic phrases like "I bring experience in relevant coursework and skills" or "I am comfortable working in a technical, fast-paced environment." These say nothing. Use the actual course names, actual project descriptions, actual skill names.
+- NEVER use em dashes. Use commas, periods, or rewrite the sentence instead.
+- The email must be 100% ready to send. The student should not need to change a single word.
+- Every email must feel distinct and personalized to this specific student writing to this specific professor. Nothing that could apply to any student or any professor.
+
+QUALITY BAR: A professor reading this should think "This student actually researched my work and has real relevant experience." Not "This is a form letter."
 
 Return ONLY a valid JSON object with keys "subject" and "body". No markdown, no code fences.
 `.trim();
 
     try {
       const response = await anthropic.messages.create({
+        // Sonnet: reasoning-heavy — personalizes each email to the specific professor's research
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
         system:
-          "You write personalized cold emails for college students seeking research positions. You are concise, specific, and never use em dashes. Return only the JSON object requested.",
+          "You write cold emails for college students seeking research positions. Your job is to use the student's ACTUAL data (real courses, real experience, real skills, real name) and the professor's ACTUAL research to write a complete, ready-to-send email with zero placeholders. Never invent filler. Never use bracketed placeholders. Never write generic phrases. Every sentence must be grounded in the specific student and the specific professor. Never use em dashes. Return only the JSON object requested.",
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      const raw = response.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
+      const raw = response.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("").trim();
       const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-      const { subject, body } = JSON.parse(clean);
+      let parsed: { subject: string; body: string };
+      try {
+        parsed = JSON.parse(clean);
+      } catch {
+        const extracted = extractJsonString(clean);
+        if (!extracted) throw new SyntaxError("No JSON in email draft response");
+        parsed = JSON.parse(extracted);
+      }
+      const { subject, body } = parsed;
 
       emailRows.push({
         user_id: user.id,

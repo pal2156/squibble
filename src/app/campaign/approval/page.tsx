@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Pencil, SkipForward, Send, Building2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Email } from "@/lib/types";
 
 type EmailState = "pending" | "approved" | "skipped";
+type CardPhase = "idle" | "sent" | "exiting" | "entering";
 
 function ApprovalContent() {
   const router = useRouter();
@@ -19,7 +20,9 @@ function ApprovalContent() {
   const [current, setCurrent] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
-  const [justApproved, setJustApproved] = useState(false);
+  const [cardPhase, setCardPhase] = useState<CardPhase>("idle");
+  const [exitDir, setExitDir] = useState<"left" | "right">("left");
+  const [showDone, setShowDone] = useState(false);
   const [loadingDrafts, setLoadingDrafts] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -55,6 +58,25 @@ function ApprovalContent() {
     loadDrafts();
   }, [campaignId]);
 
+  // Animates the current card out, then advances to the next card (or done screen).
+  const advanceCard = useCallback((nextIndex: number, isLast: boolean) => {
+    setCardPhase("exiting");
+    setTimeout(() => {
+      if (isLast) {
+        setShowDone(true);
+        setCardPhase("idle");
+      } else {
+        setCurrent(nextIndex);
+        // Set entering state (no transition) so browser renders start position...
+        setCardPhase("entering");
+        // ...then on the next two frames, flip to idle so CSS transition fires.
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => setCardPhase("idle"))
+        );
+      }
+    }, 280);
+  }, []);
+
   if (loadingDrafts) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-5">
@@ -83,40 +105,71 @@ function ApprovalContent() {
     );
   }
 
+  if (showDone) {
+    const approved = Object.values(states).filter((s) => s === "approved").length;
+    const total = emails.length;
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6 animate-fade-in">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(52,211,153,0.1)" }}>
+            <Send className="w-6 h-6" style={{ color: "#34d399" }} />
+          </div>
+          <h2 className="text-xl font-bold mb-2" style={{ color: "var(--ink)" }}>
+            You're all set
+          </h2>
+          <p className="text-sm mb-1" style={{ color: "var(--ink-secondary)" }}>
+            <span style={{ color: "#34d399", fontWeight: 600 }}>{approved} email{approved !== 1 ? "s" : ""}</span> sent to professors.
+          </p>
+          <p className="text-xs mb-8" style={{ color: "var(--ink-muted)" }}>
+            {total - approved > 0 ? `${total - approved} skipped.` : "Good luck!"}
+          </p>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "#fff" }}
+          >
+            View Dashboard
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   const email = emails[current];
   const reviewed = Object.values(states).filter((s) => s !== "pending").length;
   const total = emails.length;
-  const allDone = reviewed === total && total > 0;
 
   const handleApprove = async () => {
-    if (!email || sendingId) return;
+    if (!email || cardPhase !== "idle" || sendingId) return;
+    const isLast = current >= emails.length - 1;
     setSendingId(email.id);
-    setJustApproved(true);
 
-    // Fire-and-forget send; Phase 5 wires this to Gmail
-    await fetch("/api/emails/send", {
+    fetch("/api/emails/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ emailId: email.id }),
     }).catch(() => {});
 
     setStates((prev) => ({ ...prev, [email.id]: "approved" }));
+    setExitDir("left");
+    setCardPhase("sent");
 
     setTimeout(() => {
-      setJustApproved(false);
       setSendingId(null);
-      if (current < emails.length - 1) setCurrent((c) => c + 1);
-    }, 700);
+      advanceCard(current + 1, isLast);
+    }, 1000);
   };
 
   const handleSkip = () => {
-    if (!email) return;
+    if (!email || cardPhase !== "idle") return;
+    const isLast = current >= emails.length - 1;
     setStates((prev) => ({ ...prev, [email.id]: "skipped" }));
-    if (current < emails.length - 1) setCurrent((c) => c + 1);
+    setExitDir("right");
+    advanceCard(current + 1, isLast);
   };
 
   const handleEdit = () => {
-    if (!email) return;
+    if (!email || cardPhase !== "idle") return;
     setEditBody(bodies[email.id] ?? email.body ?? "");
     setEditing(email.id);
   };
@@ -126,7 +179,6 @@ function ApprovalContent() {
     const newBody = editBody;
     setBodies((prev) => ({ ...prev, [editing]: newBody }));
     setEditing(null);
-    // Persist edit to Supabase
     await fetch(`/api/emails/${editing}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -141,7 +193,6 @@ function ApprovalContent() {
       pending.forEach((e) => { next[e.id] = "approved"; });
       return next;
     });
-    // Send all pending
     for (const e of pending) {
       await fetch("/api/emails/send", {
         method: "POST",
@@ -149,40 +200,61 @@ function ApprovalContent() {
         body: JSON.stringify({ emailId: e.id }),
       }).catch(() => {});
     }
+    setShowDone(true);
   };
-
-  if (allDone) {
-    const approved = Object.values(states).filter((s) => s === "approved").length;
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="text-center max-w-sm">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(52,211,153,0.1)" }}>
-            <Send className="w-5 h-5" style={{ color: "#34d399" }} />
-          </div>
-          <h2 className="text-xl font-bold mb-1.5" style={{ color: "var(--ink)" }}>
-            Queue complete
-          </h2>
-          <p className="text-sm mb-1" style={{ color: "var(--ink-secondary)" }}>
-            <span style={{ color: "#34d399", fontWeight: 600 }}>{approved} email{approved !== 1 ? "s" : ""}</span> approved and sent.
-          </p>
-          <p className="text-xs mb-7" style={{ color: "var(--ink-muted)" }}>
-            {total - approved} skipped.
-          </p>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "#fff" }}
-          >
-            View Dashboard
-          </Link>
-        </div>
-      </div>
-    );
-  }
 
   if (!email) return null;
 
   const currentBody = bodies[email.id] ?? email.body ?? "";
+  const showSentBadge = cardPhase === "sent" || cardPhase === "exiting";
+  const isAnimating = cardPhase !== "idle";
+
+  // Card style driven by phase. "entering" uses transition:none so the browser
+  // renders the start position instantly before we flip to idle and animate in.
+  const CARD_TRANSITION = "opacity 0.28s ease, transform 0.28s ease, background-color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease";
+
+  const cardStyle = ((): React.CSSProperties => {
+    switch (cardPhase) {
+      case "sent":
+        return {
+          transition: CARD_TRANSITION,
+          opacity: 1,
+          transform: "translateY(0) scale(1)",
+          background: "rgba(52,211,153,0.06)",
+          borderColor: "rgba(52,211,153,0.28)",
+          boxShadow: "0 0 32px rgba(52,211,153,0.12), 0 1px 3px rgba(0,0,0,0.06)",
+        };
+      case "exiting":
+        return {
+          transition: CARD_TRANSITION,
+          opacity: 0,
+          transform: exitDir === "left"
+            ? "translateX(-28px) scale(0.98)"
+            : "translateX(28px) scale(0.98)",
+          background: exitDir === "left" ? "rgba(52,211,153,0.04)" : "var(--bg-card)",
+          borderColor: exitDir === "left" ? "rgba(52,211,153,0.15)" : "var(--border-subtle)",
+          boxShadow: "none",
+        };
+      case "entering":
+        return {
+          transition: "none",
+          opacity: 0,
+          transform: "translateY(14px)",
+          background: "var(--bg-card)",
+          borderColor: "var(--border-subtle)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+        };
+      default:
+        return {
+          transition: CARD_TRANSITION,
+          opacity: 1,
+          transform: "translateY(0) scale(1)",
+          background: "var(--bg-card)",
+          borderColor: "var(--border-subtle)",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+        };
+    }
+  })();
 
   return (
     <div className="px-8 py-8 max-w-2xl mx-auto">
@@ -206,13 +278,13 @@ function ApprovalContent() {
           </div>
         </div>
 
-        {/* Progress */}
+        {/* Progress dots */}
         <div className="flex items-center gap-3">
           <div className="flex gap-1.5">
             {emails.map((e, i) => (
               <button
                 key={e.id}
-                onClick={() => setCurrent(i)}
+                onClick={() => { if (!isAnimating) setCurrent(i); }}
                 className="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center transition-all duration-150"
                 style={
                   states[e.id] === "approved"
@@ -239,18 +311,12 @@ function ApprovalContent() {
       </div>
 
       {/* Email card */}
-      <div
-        className="rounded-xl border overflow-hidden transition-all duration-300"
-        style={{
-          background: justApproved ? "rgba(52,211,153,0.04)" : "var(--bg-card)",
-          borderColor: justApproved ? "rgba(52,211,153,0.25)" : "var(--border-subtle)",
-          boxShadow: justApproved
-            ? "0 0 28px rgba(52,211,153,0.1), 0 1px 3px rgba(0,0,0,0.06)"
-            : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-        }}
-      >
+      <div className="rounded-xl border overflow-hidden" style={cardStyle}>
         {/* Professor header */}
-        <div className="px-6 py-5 border-b flex items-center justify-between" style={{ borderColor: "var(--border-subtle)" }}>
+        <div
+          className="px-6 py-5 border-b flex items-center justify-between"
+          style={{ borderColor: showSentBadge ? "rgba(52,211,153,0.2)" : "var(--border-subtle)", transition: "border-color 0.35s ease" }}
+        >
           <div className="flex items-center gap-3.5">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center text-xs font-bold"
@@ -273,8 +339,12 @@ function ApprovalContent() {
               </p>
             </div>
           </div>
-          {justApproved && (
-            <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full animate-fade-in" style={{ background: "rgba(52,211,153,0.12)", color: "#34d399" }}>
+
+          {showSentBadge && (
+            <div
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full animate-fade-in"
+              style={{ background: "rgba(52,211,153,0.12)", color: "#34d399" }}
+            >
               <Check className="w-3 h-3" strokeWidth={3} />
               Sent
             </div>
@@ -321,8 +391,8 @@ function ApprovalContent() {
         </div>
       </div>
 
-      {/* Actions */}
-      {!justApproved && editing !== email.id && (
+      {/* Actions — shown only when idle and not editing */}
+      {cardPhase === "idle" && editing !== email.id && (
         <div className="flex items-center gap-2.5 mt-4 animate-slide-up">
           <button
             onClick={handleApprove}
@@ -333,7 +403,7 @@ function ApprovalContent() {
             onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; e.currentTarget.style.boxShadow = "none"; }}
           >
             <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-            {sendingId ? "Sending..." : "Approve & Send"}
+            Approve & Send
           </button>
 
           <button
@@ -360,8 +430,8 @@ function ApprovalContent() {
         </div>
       )}
 
-      {/* Upcoming */}
-      {current < emails.length - 1 && !justApproved && editing !== email.id && (
+      {/* Next up preview */}
+      {current < emails.length - 1 && cardPhase === "idle" && editing !== email.id && (
         <div className="mt-6 px-4 py-3 rounded-xl border flex items-center gap-3" style={{ background: "var(--bg-surface)", borderColor: "var(--border-subtle)" }}>
           <p className="text-xs" style={{ color: "var(--ink-muted)" }}>Next up:</p>
           <p className="text-xs font-medium" style={{ color: "var(--ink-secondary)" }}>
@@ -370,7 +440,7 @@ function ApprovalContent() {
         </div>
       )}
 
-      {current < emails.length - 1 && !justApproved && editing !== email.id && (
+      {current < emails.length - 1 && cardPhase === "idle" && editing !== email.id && (
         <button
           onClick={handleApproveAll}
           className="w-full mt-3 py-2 text-xs font-medium rounded-xl transition-colors"

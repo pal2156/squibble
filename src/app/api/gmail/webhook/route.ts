@@ -128,6 +128,7 @@ export async function POST(request: Request) {
     let classification: "positive" | "negative" = "positive";
     try {
       const classRes = await anthropic.messages.create({
+        // Haiku: mechanical binary classification — no reasoning required
         model: "claude-haiku-4-5-20251001",
         max_tokens: 10,
         messages: [

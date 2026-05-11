@@ -10,7 +10,6 @@ interface FormState {
   path: Path;
   cvName: string;
   cvText: string;
-  cvParsed: boolean;
   name: string;
   school: string;
   year: string;
@@ -29,11 +28,15 @@ interface Errors {
   whatYouStudy?: string;
 }
 
+interface ExtractionResult {
+  fields: Record<string, string>;
+  cvText: string;
+}
+
 const defaultForm: FormState = {
   path: "A",
   cvName: "",
   cvText: "",
-  cvParsed: false,
   name: "",
   school: "",
   year: "",
@@ -59,12 +62,10 @@ const inputClass = "w-full px-3.5 py-3 rounded-lg border text-sm block";
 
 function CVUploadZone({
   cvName,
-  parsing,
   onUpload,
   onClear,
 }: {
   cvName: string;
-  parsing: boolean;
   onUpload: (file: File | null) => void;
   onClear: () => void;
 }) {
@@ -75,7 +76,7 @@ function CVUploadZone({
       <input
         ref={fileRef}
         type="file"
-        accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
+        accept=".pdf"
         className="hidden"
         onChange={(e) => {
           onUpload(e.target.files?.[0] ?? null);
@@ -102,22 +103,9 @@ function CVUploadZone({
             <p className="text-sm font-medium mb-0.5" style={{ color: "var(--ink-secondary)" }}>
               Drag & drop or <span style={{ color: "#5C7C89" }}>click to browse</span>
             </p>
-            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF, Word, or text file up to 5MB</p>
+            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF up to 5MB</p>
           </div>
         </button>
-      ) : parsing ? (
-        <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "var(--bg-elevated)" }}>
-            <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" style={{ color: "#5C7C89" }}>
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>{cvName}</p>
-            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>Reading your CV…</p>
-          </div>
-        </div>
       ) : (
         <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "rgba(52,211,153,0.04)", borderColor: "rgba(52,211,153,0.18)" }}>
           <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(52,211,153,0.1)" }}>
@@ -182,7 +170,7 @@ function SectionLabel({ title, first }: { title: string; first?: boolean }) {
   );
 }
 
-// ── Shared profile fields (shown for Path B, and for Path A after parsing) ──
+// ── Manual profile fields (Path B only) ────────────────────────────────────
 
 function ProfileFields({
   form,
@@ -323,8 +311,7 @@ function ProfileFields({
 export default function ProfilePage() {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(defaultForm);
-  const [parsing, setParsing] = useState(false);
-  const [parseError, setParseError] = useState<string | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditView, setIsEditView] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -332,17 +319,27 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Errors>({});
 
-  // Load profile from Supabase on mount
+  // Background extraction state: result stored here, awaited on save
+  const extractionPromise = useRef<Promise<ExtractionResult | null> | null>(null);
+
+  const PATH_KEY = "squibble_profile_path";
+
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
       .then(({ profile }) => {
         if (profile) {
+          let restoredPath: Path = profile.cv_text ? "A" : "B";
+          if (!profile.cv_text) {
+            try {
+              const saved = localStorage.getItem(PATH_KEY) as Path | null;
+              if (saved === "A" || saved === "B") restoredPath = saved;
+            } catch {}
+          }
           setForm({
-            path: profile.cv_text ? "A" : "B",
-            cvName: profile.cv_text ? "Uploaded resume" : "",
+            path: restoredPath,
+            cvName: restoredPath === "A" ? "Uploaded resume" : "",
             cvText: profile.cv_text ?? "",
-            cvParsed: !!profile.cv_text,
             name: profile.name ?? "",
             school: profile.school ?? "",
             year: profile.year ?? "",
@@ -354,6 +351,13 @@ export default function ProfilePage() {
             anythingElse: profile.anything_else ?? "",
           });
           setIsEditView(true);
+        } else {
+          try {
+            const saved = localStorage.getItem(PATH_KEY) as Path | null;
+            if (saved === "A" || saved === "B") {
+              setForm((f) => ({ ...f, path: saved }));
+            }
+          } catch {}
         }
       })
       .catch(() => {})
@@ -371,54 +375,41 @@ export default function ProfilePage() {
   };
 
   const setPath = (p: Path) => {
-    setForm((f) => ({ ...f, path: p, cvParsed: false, cvName: "", cvText: "" }));
+    try { localStorage.setItem(PATH_KEY, p); } catch {}
+    setForm((f) => ({ ...f, path: p, cvName: "", cvText: "" }));
     setSaved(false);
     setErrors({});
-    setParseError(null);
+    setUploadError(null);
+    extractionPromise.current = null;
   };
 
-  const handleUpload = async (file: File | null) => {
+  const handleUpload = (file: File | null) => {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setParseError("File must be under 5MB.");
+      setUploadError("File must be under 5MB.");
       return;
     }
-    setParseError(null);
+    if (file.type !== "application/pdf") {
+      setUploadError("Please upload a PDF file.");
+      return;
+    }
+    setUploadError(null);
     set("cvName", file.name);
-    setParsing(true);
 
+    // Fire extraction silently in background
     const fd = new FormData();
     fd.append("file", file);
-
-    try {
-      const res = await fetch("/api/profile/parse-cv", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Parse failed");
-
-      const { fields, cvText } = data;
-      setForm((f) => ({
-        ...f,
-        cvText,
-        cvParsed: true,
-        name: fields.name ?? f.name,
-        school: fields.school ?? f.school,
-        year: fields.year ?? f.year,
-        whatYouStudy: fields.major ?? f.whatYouStudy,
-        coursework: fields.coursework ?? f.coursework,
-        experience: fields.experience ?? f.experience,
-        skills: fields.skills ?? f.skills,
-        extracurriculars: fields.extracurriculars ?? f.extracurriculars,
-        anythingElse: fields.anything_else ?? f.anythingElse,
-      }));
-    } catch (err) {
-      setParseError(err instanceof Error ? err.message : "Could not read CV.");
-      set("cvName", "");
-    } finally {
-      setParsing(false);
-    }
+    extractionPromise.current = fetch("/api/profile/parse-cv", { method: "POST", body: fd })
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) return null;
+        return data as ExtractionResult;
+      })
+      .catch(() => null);
   };
 
   const validate = (): boolean => {
+    if (form.path === "A") return true;
     const e: Errors = {};
     if (!form.name.trim()) e.name = "Required";
     if (!form.school.trim()) e.school = "Required";
@@ -429,32 +420,71 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
-    // For Path A: require CV uploaded; for Path B: require core fields
-    if (form.path === "A" && !form.cvParsed) return;
+    if (form.path === "A" && !form.cvName) return;
     if (!validate()) return;
 
     setSaving(true);
     setSaveError(null);
+
+    let body: Record<string, unknown>;
+
+    if (form.path === "A") {
+      // Await background extraction (usually already done by the time user clicks save)
+      const extracted = extractionPromise.current ? await extractionPromise.current : null;
+
+      if (extracted) {
+        body = {
+          name: extracted.fields.name ?? null,
+          school: extracted.fields.school ?? null,
+          year: extracted.fields.year ?? null,
+          major: extracted.fields.major ?? null,
+          coursework: extracted.fields.coursework ?? null,
+          experience: extracted.fields.experience ?? null,
+          skills: extracted.fields.skills ?? null,
+          extracurriculars: extracted.fields.extracurriculars ?? null,
+          anything_else: form.anythingElse || null,
+          cv_text: extracted.cvText || null,
+        };
+      } else {
+        // No new extraction (edit view without re-upload), preserve existing fields
+        body = {
+          name: form.name || null,
+          school: form.school || null,
+          year: form.year || null,
+          major: form.whatYouStudy || null,
+          coursework: form.coursework || null,
+          experience: form.experience || null,
+          skills: form.skills || null,
+          extracurriculars: form.extracurriculars || null,
+          anything_else: form.anythingElse || null,
+          cv_text: form.cvText || null,
+        };
+      }
+    } else {
+      body = {
+        name: form.name,
+        school: form.school,
+        year: form.year,
+        major: form.whatYouStudy,
+        coursework: form.coursework,
+        experience: form.experience,
+        skills: form.skills,
+        extracurriculars: form.extracurriculars,
+        anything_else: form.anythingElse,
+        cv_text: null,
+      };
+    }
+
     try {
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: form.name,
-          school: form.school,
-          year: form.year,
-          major: form.whatYouStudy,
-          coursework: form.coursework,
-          experience: form.experience,
-          skills: form.skills,
-          extracurriculars: form.extracurriculars,
-          anything_else: form.anythingElse,
-          cv_text: form.cvText || null,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
 
+      try { localStorage.setItem(PATH_KEY, form.path); } catch {}
       if (isEditView) {
         setSaved(true);
       } else {
@@ -477,11 +507,7 @@ export default function ProfilePage() {
   const iconColor = (active: boolean) => active ? "#1F4959" : "var(--ink-muted)";
   const labelColor = (active: boolean) => active ? "#1F4959" : "var(--ink)";
 
-  // For Path A, show form fields only after CV has been parsed
-  const showFields = form.path === "B" || form.cvParsed;
-
-  // Save button is disabled while uploading, parsing, or saving
-  const saveDisabled = parsing || saving || (form.path === "A" && !form.cvParsed);
+  const saveDisabled = saving || (form.path === "A" && !form.cvName);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
@@ -498,7 +524,7 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Path selection cards */}
+        {/* Path selection */}
         <div className="flex gap-3 mb-8">
           <button
             onClick={() => setPath("A")}
@@ -527,60 +553,80 @@ export default function ProfilePage() {
           </button>
         </div>
 
-        {/* Path A: upload zone */}
+        {/* Path A */}
         {form.path === "A" && (
-          <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--ink-muted)" }}>Resume</p>
-            <CVUploadZone
-              cvName={form.cvName}
-              parsing={parsing}
-              onUpload={handleUpload}
-              onClear={() => setForm((f) => ({ ...f, cvName: "", cvText: "", cvParsed: false }))}
-            />
-            {parseError && (
-              <p className="text-xs mt-2" style={{ color: "#f87171" }}>{parseError}</p>
+          <>
+            <div className="mb-6">
+              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--ink-muted)" }}>Resume</p>
+              <CVUploadZone
+                cvName={form.cvName}
+                onUpload={handleUpload}
+                onClear={() => {
+                  setForm((f) => ({ ...f, cvName: "", cvText: "" }));
+                  extractionPromise.current = null;
+                  setUploadError(null);
+                }}
+              />
+              {uploadError && (
+                <p className="text-xs mt-2" style={{ color: "#f87171" }}>{uploadError}</p>
+              )}
+            </div>
+
+            {form.cvName && (
+              <>
+                <SectionLabel title="Anything else?" first />
+                <Field label="Anything you'd like researchers to know" optional>
+                  <textarea
+                    value={form.anythingElse}
+                    onChange={(e) => set("anythingElse", e.target.value)}
+                    rows={4}
+                    placeholder="A personal connection to the field, an unusual background, something you are proud of"
+                    className={inputClass + " leading-relaxed resize-y"}
+                    style={inputStyle}
+                    onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
+                    onBlur={(e) => (e.target.style.borderColor = "var(--border-default)")}
+                  />
+                </Field>
+              </>
             )}
-            {form.cvParsed && (
-              <p className="text-xs mt-2" style={{ color: "#34d399" }}>
-                Fields extracted. Review and edit below before saving.
-              </p>
-            )}
-          </div>
+          </>
         )}
 
-        {/* Shared form fields: shown for Path B always, Path A after parsing */}
-        {showFields && (
+        {/* Path B */}
+        {form.path === "B" && (
           <ProfileFields form={form} errors={errors} set={set} />
         )}
 
         {/* Save button */}
-        <div className="mt-8">
-          {saveError && (
-            <p className="text-xs mb-3" style={{ color: "#f87171" }}>{saveError}</p>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saveDisabled}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }}
-          >
-            {saving ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                Saving…
-              </>
-            ) : saved ? (
-              <><Check className="w-4 h-4" strokeWidth={2.5} /> Saved</>
-            ) : isEditView ? (
-              "Save changes"
-            ) : (
-              "Save & continue →"
+        {(form.path === "B" || form.cvName) && (
+          <div className="mt-8">
+            {saveError && (
+              <p className="text-xs mb-3" style={{ color: "#f87171" }}>{saveError}</p>
             )}
-          </button>
-        </div>
+            <button
+              onClick={handleSave}
+              disabled={saveDisabled}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }}
+            >
+              {saving ? (
+                <>
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Saving…
+                </>
+              ) : saved ? (
+                <><Check className="w-4 h-4" strokeWidth={2.5} /> Saved</>
+              ) : isEditView ? (
+                "Save changes"
+              ) : (
+                "Save & continue →"
+              )}
+            </button>
+          </div>
+        )}
 
       </div>
     </div>

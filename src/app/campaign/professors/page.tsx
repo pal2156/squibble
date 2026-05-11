@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail, Building2, FlaskConical, GraduationCap } from "lucide-react";
 import type { Professor } from "@/lib/types";
+import { cleanDescription } from "@/lib/utils";
 
 function fitScoreStyle(score: number | null): { bg: string; text: string; border: string } {
   if (!score) return { bg: "rgba(92,124,137,0.12)", text: "#5C7C89", border: "rgba(92,124,137,0.25)" };
@@ -110,7 +111,7 @@ function ProfessorCard({
 
           {professor.description && (
             <p className="text-xs leading-relaxed mb-3" style={{ color: "var(--ink-secondary)" }}>
-              {professor.description}
+              {cleanDescription(professor.description)}
             </p>
           )}
 

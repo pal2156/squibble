@@ -34,7 +34,8 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute =
     pathname.startsWith("/login") || pathname.startsWith("/auth");
 
-  if (!user && !isAuthRoute) {
+  // API routes handle their own auth and must return JSON, not an HTML redirect
+  if (!user && !isAuthRoute && !pathname.startsWith("/api/")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
