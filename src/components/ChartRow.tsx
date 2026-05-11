@@ -14,7 +14,7 @@ import {
   Cell,
 } from "recharts";
 import { ChevronDown } from "lucide-react";
-import { sentEmails } from "@/lib/mock-data";
+import { SentEmail } from "@/lib/types";
 
 const SENT_COLOR = "#60a5fa";
 const RESP_COLOR = "#34d399";
@@ -138,11 +138,13 @@ function CampaignTooltip({
   );
 }
 
-function ResponseRateCard() {
+function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
   const [range, setRange] = useState<TimeRange>("All Campaigns");
 
   const chartData = useMemo((): CampaignPoint[] => {
-    const maxMs = Math.max(...sentEmails.map((e) => parseMs(e.dateSent)));
+    if (emails.length === 0) return [];
+
+    const maxMs = Math.max(...emails.map((e) => parseMs(e.dateSent)));
     const DAY = 86400000;
     const cutoffMs =
       range === "Last 7 Days"
@@ -153,7 +155,7 @@ function ResponseRateCard() {
         ? maxMs - 90 * DAY
         : 0;
 
-    const filtered = sentEmails.filter((e) => parseMs(e.dateSent) >= cutoffMs);
+    const filtered = emails.filter((e) => parseMs(e.dateSent) >= cutoffMs);
 
     const campaignOrder: string[] = [];
     const campaignMap = new Map<string, { sent: number; responses: number }>();
@@ -176,7 +178,7 @@ function ResponseRateCard() {
       const name = campaign.split(" — ")[0];
       return { campaign: name, sent, responses };
     });
-  }, [range]);
+  }, [emails, range]);
 
   return (
     <CardShell
@@ -324,20 +326,20 @@ function SegmentLabel({
   );
 }
 
-function ResponseBreakdownCard() {
+function ResponseBreakdownCard({ emails }: { emails: SentEmail[] }) {
   const data = useMemo(() => {
     const counts: Record<string, number> = {
       "Positive Reply": 0,
       "No Response": 0,
       "Negative Reply": 0,
     };
-    sentEmails.forEach((e) => {
+    emails.forEach((e) => {
       counts[e.status] = (counts[e.status] ?? 0) + 1;
     });
     return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  }, []);
+  }, [emails]);
 
-  const total = sentEmails.length;
+  const total = emails.length;
 
   return (
     <CardShell title="Response Breakdown">
@@ -412,11 +414,11 @@ function ResponseBreakdownCard() {
 
 // --- Row export ---
 
-export function ChartRow() {
+export function ChartRow({ emails }: { emails: SentEmail[] }) {
   return (
     <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: "2fr 1fr" }}>
-      <ResponseRateCard />
-      <ResponseBreakdownCard />
+      <ResponseRateCard emails={emails} />
+      <ResponseBreakdownCard emails={emails} />
     </div>
   );
 }

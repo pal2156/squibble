@@ -86,3 +86,17 @@ export interface EmailWithReply extends Email {
   reply?: Reply | null;
   campaign?: Pick<Campaign, "title"> | null;
 }
+
+// Display shape used by the dashboard page and charts
+export interface SentEmail {
+  id: string;
+  professor: string;
+  university: string;
+  department: string;
+  campaign: string;
+  dateSent: string;
+  status: "Positive Reply" | "No Response" | "Negative Reply";
+  subject: string;
+  body: string;
+  reply?: { date: string; body: string };
+}

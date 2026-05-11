@@ -275,7 +275,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts row */}
-      <ChartRow />
+      <ChartRow emails={sentEmails} />
 
 
       {/* Filters row */}
