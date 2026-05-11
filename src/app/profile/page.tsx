@@ -75,7 +75,7 @@ function CVUploadZone({
       <input
         ref={fileRef}
         type="file"
-        accept=".pdf"
+        accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
         className="hidden"
         onChange={(e) => {
           onUpload(e.target.files?.[0] ?? null);
@@ -102,7 +102,7 @@ function CVUploadZone({
             <p className="text-sm font-medium mb-0.5" style={{ color: "var(--ink-secondary)" }}>
               Drag & drop or <span style={{ color: "#5C7C89" }}>click to browse</span>
             </p>
-            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF up to 5MB</p>
+            <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF, Word, or text file up to 5MB</p>
           </div>
         </button>
       ) : parsing ? (
