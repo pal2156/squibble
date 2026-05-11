@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
+import { useCampaignDraft } from "@/components/CampaignDraftContext";
 
 function LoadingModal({
   message,
@@ -80,14 +81,8 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export default function CampaignPage() {
   const router = useRouter();
-  const [university, setUniversity] = useState("");
-  const [research, setResearch] = useState("");
-  const [positionType, setPositionType] = useState("");
-  const [timeCommitment, setTimeCommitment] = useState("");
-  const [availability, setAvailability] = useState("");
-  const [locationPref, setLocationPref] = useState("");
-  const [contactCount, setContactCount] = useState(10);
-  const [rawCount, setRawCount] = useState("10");
+  const { draft, setDraft, resetDraft } = useCampaignDraft();
+  const { university, research, positionType, timeCommitment, availability, locationPref, contactCount, rawCount } = draft;
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState("Finding the right department...");
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +145,7 @@ export default function CampaignPage() {
             if (event.type === "progress") setProgressMessage(event.message);
             if (event.type === "error") throw new Error(event.message);
             if (event.type === "done") {
+              resetDraft();
               router.push(`/campaign/professors?campaignId=${campaignId}`);
               return;
             }
@@ -184,14 +180,14 @@ export default function CampaignPage() {
               <input
                 type="text"
                 value={university}
-                onChange={(e) => setUniversity(e.target.value)}
+                onChange={(e) => setDraft({ university: e.target.value })}
                 placeholder="Which university?"
                 className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
                 style={inputStyle(!!university)}
               />
               <textarea
                 value={research}
-                onChange={(e) => setResearch(e.target.value)}
+                onChange={(e) => setDraft({ research: e.target.value })}
                 placeholder="e.g. Condensed matter physics or Behavioral economics"
                 rows={4}
                 className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none"
@@ -206,7 +202,7 @@ export default function CampaignPage() {
             <div className="space-y-2.5">
               <select
                 value={positionType}
-                onChange={(e) => setPositionType(e.target.value)}
+                onChange={(e) => setDraft({ positionType: e.target.value })}
                 className={selectClassName}
                 style={inputStyle(!!positionType)}
               >
@@ -218,7 +214,7 @@ export default function CampaignPage() {
 
               <select
                 value={timeCommitment}
-                onChange={(e) => setTimeCommitment(e.target.value)}
+                onChange={(e) => setDraft({ timeCommitment: e.target.value })}
                 className={selectClassName}
                 style={inputStyle(!!timeCommitment)}
               >
@@ -232,7 +228,7 @@ export default function CampaignPage() {
               <input
                 type="text"
                 value={availability}
-                onChange={(e) => setAvailability(e.target.value)}
+                onChange={(e) => setDraft({ availability: e.target.value })}
                 placeholder="When and how long are you available?"
                 className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
                 style={inputStyle(!!availability)}
@@ -243,7 +239,7 @@ export default function CampaignPage() {
 
               <select
                 value={locationPref}
-                onChange={(e) => setLocationPref(e.target.value)}
+                onChange={(e) => setDraft({ locationPref: e.target.value })}
                 className={selectClassName}
                 style={inputStyle(!!locationPref)}
               >
@@ -267,12 +263,11 @@ export default function CampaignPage() {
               type="text"
               inputMode="numeric"
               value={rawCount}
-              onChange={(e) => setRawCount(e.target.value)}
+              onChange={(e) => setDraft({ rawCount: e.target.value })}
               onBlur={() => {
                 const n = parseInt(rawCount, 10);
                 const clamped = isNaN(n) || n < 1 ? 1 : n > 20 ? 20 : n;
-                setContactCount(clamped);
-                setRawCount(String(clamped));
+                setDraft({ contactCount: clamped, rawCount: String(clamped) });
               }}
               className="text-3xl font-bold text-center w-14 rounded-lg bg-transparent border-0 focus:outline-none cursor-pointer"
               style={{ color: "var(--accent)" }}
@@ -285,8 +280,7 @@ export default function CampaignPage() {
             value={contactCount}
             onChange={(e) => {
               const n = Number(e.target.value);
-              setContactCount(n);
-              setRawCount(String(n));
+              setDraft({ contactCount: n, rawCount: String(n) });
             }}
             className="w-full cursor-pointer"
             style={{ accentColor: "var(--accent)" }}

@@ -22,6 +22,13 @@
   box-sizing: border-box;
 }
 
+.recharts-wrapper,
+.recharts-wrapper *,
+.recharts-surface,
+.recharts-surface * {
+  outline: none !important;
+}
+
 html,
 body {
   background-color: var(--bg-base);

@@ -93,7 +93,7 @@ export default function ConversationsPage() {
           {conversations.length === 0 ? (
             <div className="px-5 py-12 text-center">
               <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-                No replies yet — check back soon
+                No replies yet. Check back soon.
               </p>
             </div>
           ) : (
@@ -165,7 +165,7 @@ export default function ConversationsPage() {
         {conversations.length === 0 ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm" style={{ color: "var(--ink-muted)" }}>
-              No replies yet — check back soon
+              No replies yet. Check back soon.
             </p>
           </div>
         ) : !selected ? (

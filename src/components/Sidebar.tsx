@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Telescope, User, Zap, PanelLeft, Inbox, LogOut, Settings, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import UpgradeModal from "./UpgradeModal";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -38,6 +39,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
 
   const [userRecord, setUserRecord] = useState<UserRecord | null>(null);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [btnHovered, setBtnHovered] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -200,6 +202,57 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           })}
         </nav>
 
+        {/* Upgrade card */}
+        <div className="px-2 mt-3 mb-2 flex-shrink-0">
+          {open ? (
+            <div
+              className="rounded-2xl"
+              style={{
+                background: "linear-gradient(180deg, #0E2438 0%, #011425 100%)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                padding: "20px 16px",
+              }}
+            >
+              <p
+                className="text-sm font-bold text-center mb-1.5"
+                style={{ color: "#FFFFFF" }}
+              >
+                Upgrade to Pro
+              </p>
+              <p
+                className="text-xs text-center mb-4 leading-snug"
+                style={{ color: "rgba(255,255,255,0.55)" }}
+              >
+                Get 1 month free and unlock all features
+              </p>
+              <div className="flex justify-center">
+                <button
+                  onClick={() => setUpgradeOpen(true)}
+                  className="px-5 py-1.5 rounded-full text-xs font-semibold transition-colors"
+                  style={{ background: "#7FB8E8", color: "#011425" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "#A8D0F0"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "#7FB8E8"; }}
+                >
+                  Upgrade
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center">
+              <button
+                onClick={() => setUpgradeOpen(true)}
+                title="Upgrade to Pro"
+                className="px-3 py-1 rounded-full text-[10px] font-semibold transition-colors"
+                style={{ background: "#7FB8E8", color: "#011425" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "#A8D0F0"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "#7FB8E8"; }}
+              >
+                Pro
+              </button>
+            </div>
+          )}
+        </div>
+
         {/* Bottom nav items */}
         <div className="px-2 pb-1 space-y-0.5 flex-shrink-0">
           {bottomNavItems.map(({ label, icon: Icon }) => (
@@ -262,6 +315,8 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
         </div>
       </aside>
 
+      {upgradeOpen && <UpgradeModal onClose={() => setUpgradeOpen(false)} />}
+
       {/* Tooltip — fixed so it escapes overflow:hidden and overlaps the sidebar edge */}
       {btnHovered && toggleRect && (
         <div
@@ -314,7 +369,7 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
                   className="text-sm font-medium truncate"
                   style={{ color: "#FFFFFF" }}
                 >
-                  {userRecord?.name ?? "—"}
+                  {userRecord?.name ?? ""}
                 </p>
                 <p
                   className="text-xs truncate"

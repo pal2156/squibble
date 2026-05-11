@@ -175,7 +175,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
     return campaignOrder.map((campaign) => {
       const { sent, responses } = campaignMap.get(campaign)!;
       // Shorten: "Princeton Physics — Mar '25" → "Princeton Physics"
-      const name = campaign.split(" — ")[0];
+      const name = campaign.split(" - ")[0];
       return { campaign: name, sent, responses };
     });
   }, [emails, range]);
@@ -290,6 +290,33 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
 
 // --- Card 2: Response Breakdown (EV-style donut) ---
 
+function DonutTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: { name: string; value: number } }>;
+}) {
+  if (!active || !payload?.length) return null;
+  const { name, value } = payload[0].payload;
+  return (
+    <div
+      className="rounded-xl border px-3 py-2.5 text-xs shadow-lg"
+      style={{
+        background: "var(--bg-card)",
+        borderColor: "var(--border-default)",
+        minWidth: 160,
+      }}
+    >
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: DONUT_COLORS[name] }} />
+        <span style={{ color: "var(--ink-muted)" }}>{name}</span>
+        <span className="ml-auto font-bold tabular-nums" style={{ color: "var(--ink)" }}>{value}</span>
+      </div>
+    </div>
+  );
+}
+
 const RADIAN = Math.PI / 180;
 
 function SegmentLabel({
@@ -344,8 +371,8 @@ function ResponseBreakdownCard({ emails }: { emails: SentEmail[] }) {
   return (
     <CardShell title="Response Breakdown">
       <div className="flex items-center px-4 py-4 gap-3" style={{ height: 178 }}>
-        {/* Legend */}
-        <div className="flex flex-col justify-center flex-shrink-0" style={{ width: 138 }}>
+        {/* Total */}
+        <div className="flex flex-col justify-center flex-shrink-0" style={{ width: 80 }}>
           <p
             className="text-[10px] uppercase tracking-wider mb-0.5"
             style={{ color: "var(--ink-muted)" }}
@@ -353,39 +380,21 @@ function ResponseBreakdownCard({ emails }: { emails: SentEmail[] }) {
             Total Sent
           </p>
           <p
-            className="text-3xl font-bold leading-none mb-4"
+            className="text-3xl font-bold leading-none"
             style={{ color: "var(--ink)" }}
           >
             {total}
           </p>
-          <div className="flex flex-col gap-2.5">
-            {data.map((entry) => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ background: DONUT_COLORS[entry.name] }}
-                />
-                <span
-                  className="text-[11px] leading-tight"
-                  style={{ color: "var(--ink-muted)" }}
-                >
-                  {entry.name}
-                </span>
-                <span
-                  className="text-[11px] font-semibold tabular-nums ml-auto"
-                  style={{ color: "var(--ink)" }}
-                >
-                  {entry.value}
-                </span>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Donut */}
         <div className="flex-1 min-w-0" style={{ height: 146 }}>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
+              <Tooltip
+                content={<DonutTooltip />}
+                cursor={false}
+              />
               <Pie
                 data={data}
                 cx="50%"
