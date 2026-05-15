@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { TrendingUp, Send, MessageSquare, Layers, ChevronUp, ChevronDown, Search, ChevronRight, Calendar, X } from "lucide-react";
+import { ChevronRight, X } from "lucide-react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { ChartRow } from "@/components/ChartRow";
 
@@ -36,15 +37,15 @@ const COLUMNS: { key: SortCol; label: string }[] = [
 ];
 
 const statusConfig: Record<EmailStatus, { label: string; dot: string; bg: string; text: string }> = {
-  "Positive Reply": { label: "Positive Reply", dot: "#10b981", bg: "rgba(16,185,129,0.1)", text: "#34d399" },
-  "No Response": { label: "No Response", dot: "#6b7280", bg: "rgba(107,114,128,0.08)", text: "#9ca3af" },
-  "Negative Reply": { label: "Negative Reply", dot: "#ef4444", bg: "rgba(239,68,68,0.08)", text: "#f87171" },
+  "Positive Reply": { label: "Positive Reply", dot: "#678E8D", bg: "rgba(103,142,141,0.1)", text: "#678E8D" },
+  "No Response": { label: "No Response", dot: "#BBD2DD", bg: "rgba(187,210,221,0.25)", text: "#3C5352" },
+  "Negative Reply": { label: "Negative Reply", dot: "#3C5352", bg: "rgba(60,83,82,0.08)", text: "#3C5352" },
 };
 
 function panelReplyStyle(status: EmailStatus) {
-  if (status === "Positive Reply") return { bg: "rgba(16,185,129,0.05)", border: "rgba(16,185,129,0.18)", name: "#10b981" };
-  if (status === "Negative Reply") return { bg: "rgba(239,68,68,0.04)", border: "rgba(239,68,68,0.15)", name: "#ef4444" };
-  return { bg: "var(--bg-elevated)", border: "var(--border-subtle)", name: "var(--ink)" };
+  if (status === "Positive Reply") return { bg: "rgba(103,142,141,0.05)", border: "#BBD2DD", name: "#678E8D" };
+  if (status === "Negative Reply") return { bg: "rgba(60,83,82,0.05)", border: "#BBD2DD", name: "#3C5352" };
+  return { bg: "#F1F6F9", border: "#BBD2DD", name: "#232C33" };
 }
 
 function StatusBadge({ status }: { status: EmailStatus }) {
@@ -225,10 +226,10 @@ export default function DashboardPage() {
   }, [sentEmails, sortCol, sortDir, statusFilter, search, monthInput, dayInput, yearInput, campaignFilter, universityFilter]);
 
   const stats = [
-    { label: "Emails Sent", value: totalSent, icon: Send, color: "#60a5fa", bg: "rgba(59,130,246,0.08)" },
-    { label: "Response Rate", value: `${responseRate}%`, icon: TrendingUp, color: "#5C7C89", bg: "rgba(92,124,137,0.1)" },
-    { label: "Positive Replies", value: positiveReplies, icon: MessageSquare, color: "#34d399", bg: "rgba(52,211,153,0.08)" },
-    { label: "Campaigns Run", value: campaigns, icon: Layers, color: "#fb923c", bg: "rgba(251,146,60,0.08)" },
+    { label: "Emails Sent", value: totalSent, iconSrc: "/icons/emails-sent.png", bg: "rgba(103,142,141,0.1)" },
+    { label: "Response Rate", value: `${responseRate}%`, iconSrc: "/icons/response-rate.png", bg: "rgba(103,142,141,0.1)" },
+    { label: "Positive Replies", value: positiveReplies, iconSrc: "/icons/positive-replies.png", bg: "rgba(103,142,141,0.1)" },
+    { label: "Campaigns Run", value: campaigns, iconSrc: "/icons/campaigns-run.png", bg: "rgba(103,142,141,0.1)" },
   ];
 
   return (
@@ -238,7 +239,7 @@ export default function DashboardPage() {
     <div className="px-8 py-8 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6 text-center">
-        <h1 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
+        <h1 className="text-xl font-medium mb-0.5" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
           Hello, {firstName || "there"}.
         </h1>
         <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
@@ -255,7 +256,7 @@ export default function DashboardPage() {
           boxShadow: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
-        {stats.map(({ label, value, icon: Icon, color, bg }, idx) => (
+        {stats.map(({ label, value, iconSrc, bg }, idx) => (
           <div
             key={label}
             className="flex-1 flex items-center gap-3 px-5 py-4"
@@ -264,7 +265,7 @@ export default function DashboardPage() {
             }}
           >
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: bg }}>
-              <Icon className="w-3.5 h-3.5" style={{ color }} />
+              <Image src={iconSrc} alt={label} width={14} height={14} />
             </div>
             <div>
               <p className="text-[11px] font-medium mb-0.5" style={{ color: "var(--ink-muted)" }}>{label}</p>
@@ -282,9 +283,12 @@ export default function DashboardPage() {
       <div className="flex items-center gap-2.5 mb-2.5">
         {/* Search */}
         <div className="relative flex-1 max-w-xs">
-          <Search
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-            style={{ color: "var(--ink-muted)" }}
+          <Image
+            src="/icons/search.png"
+            alt="Search"
+            width={12}
+            height={12}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
           />
           <input
             type="text"
@@ -309,9 +313,12 @@ export default function DashboardPage() {
             borderColor: isDateInvalid ? "#ef4444" : "var(--border-subtle)",
           }}
         >
-          <Calendar
-            className="w-3 h-3 mr-1.5 flex-shrink-0 pointer-events-none"
-            style={{ color: isDateInvalid ? "#ef4444" : "var(--ink-muted)" }}
+          <Image
+            src="/icons/calendar.png"
+            alt="Calendar"
+            width={12}
+            height={12}
+            className="mr-1.5 flex-shrink-0 pointer-events-none"
           />
           <input
             ref={monthRef}
@@ -368,9 +375,12 @@ export default function DashboardPage() {
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
-          <ChevronDown
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-            style={{ color: "var(--ink-muted)" }}
+          <Image
+            src="/icons/dropdown-chevron.png"
+            alt="Expand"
+            width={12}
+            height={12}
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
           />
         </div>
 
@@ -392,9 +402,12 @@ export default function DashboardPage() {
               <option key={u} value={u}>{u}</option>
             ))}
           </select>
-          <ChevronDown
-            className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
-            style={{ color: "var(--ink-muted)" }}
+          <Image
+            src="/icons/dropdown-chevron.png"
+            alt="Expand"
+            width={12}
+            height={12}
+            className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"
           />
         </div>
       </div>
@@ -469,12 +482,12 @@ export default function DashboardPage() {
                         {label}
                         {active ? (
                           sortDir === "asc" ? (
-                            <ChevronUp className="w-3 h-3 flex-shrink-0" />
+                            <Image src="/icons/sort.png" alt="Sort" width={12} height={12} className="flex-shrink-0" />
                           ) : (
-                            <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                            <Image src="/icons/sort.png" alt="Sort" width={12} height={12} className="flex-shrink-0" />
                           )
                         ) : (
-                          <ChevronDown className="w-3 h-3 flex-shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
+                          <Image src="/icons/sort.png" alt="Sort" width={12} height={12} className="flex-shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" />
                         )}
                       </span>
                     </th>
@@ -499,7 +512,7 @@ export default function DashboardPage() {
                   <tr
                     key={email.id}
                     onClick={() => setSelectedEmail(email)}
-                    className="group cursor-pointer transition-colors duration-100 hover:bg-black/[0.02]"
+                    className="group cursor-pointer transition-colors duration-100 hover:bg-[#F1F6F9]"
                     style={{
                       borderBottom: i < filtered.length - 1 ? "1px solid var(--border-subtle)" : "none",
                     }}
@@ -604,7 +617,7 @@ export default function DashboardPage() {
           >
             <StatusBadge status={selectedEmail.status} />
             <span className="flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-muted)" }}>
-              <Calendar className="w-3 h-3" />
+              <Image src="/icons/calendar.png" alt="Calendar" width={12} height={12} />
               {selectedEmail.dateSent}
             </span>
           </div>

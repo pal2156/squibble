@@ -140,12 +140,12 @@ export function ResponseRateChart() {
 
             <CartesianGrid
               vertical={false}
-              stroke="rgba(92,124,137,0.09)"
+              stroke="rgba(187,210,221,0.08)"
             />
 
             <XAxis
               dataKey="campaign"
-              tick={{ fontSize: 10, fill: "#7A9DAB" }}
+              tick={{ fontSize: 10, fill: "rgba(187,210,221,0.6)" }}
               tickLine={false}
               axisLine={false}
               dy={8}
@@ -155,7 +155,7 @@ export function ResponseRateChart() {
 
             <Tooltip
               content={<CustomTooltip />}
-              cursor={{ stroke: "rgba(92,124,137,0.15)", strokeWidth: 1, strokeDasharray: "3 3" }}
+              cursor={{ stroke: "rgba(103,142,141,0.25)", strokeWidth: 1, strokeDasharray: "3 3" }}
             />
 
             <Area

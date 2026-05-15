@@ -31,17 +31,18 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  const isAuthRoute =
-    pathname.startsWith("/login") || pathname.startsWith("/auth");
+  // "/" is the landing page (public), "/auth/*" is the OAuth callback
+  const isPublicRoute = pathname === "/" || pathname.startsWith("/auth");
 
   // API routes handle their own auth and must return JSON, not an HTML redirect
-  if (!user && !isAuthRoute && !pathname.startsWith("/api/")) {
+  if (!user && !isPublicRoute && !pathname.startsWith("/api/")) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === "/login") {
+  // Authenticated users visiting the landing page go straight to the dashboard
+  if (user && pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

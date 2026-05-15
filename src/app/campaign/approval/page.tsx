@@ -111,14 +111,14 @@ function ApprovalContent() {
     return (
       <div className="min-h-screen flex items-center justify-center px-6 animate-fade-in">
         <div className="text-center max-w-sm">
-          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(52,211,153,0.1)" }}>
-            <Send className="w-6 h-6" style={{ color: "#34d399" }} />
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(103,142,141,0.1)" }}>
+            <Send className="w-6 h-6" style={{ color: "#678E8D" }} />
           </div>
-          <h2 className="text-xl font-bold mb-2" style={{ color: "var(--ink)" }}>
+          <h2 className="text-xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             You're all set
           </h2>
           <p className="text-sm mb-1" style={{ color: "var(--ink-secondary)" }}>
-            <span style={{ color: "#34d399", fontWeight: 600 }}>{approved} email{approved !== 1 ? "s" : ""}</span> sent to professors.
+            <span style={{ color: "#678E8D", fontWeight: 600 }}>{approved} email{approved !== 1 ? "s" : ""}</span> sent to professors.
           </p>
           <p className="text-xs mb-8" style={{ color: "var(--ink-muted)" }}>
             {total - approved > 0 ? `${total - approved} skipped.` : "Good luck!"}
@@ -220,9 +220,9 @@ function ApprovalContent() {
           transition: CARD_TRANSITION,
           opacity: 1,
           transform: "translateY(0) scale(1)",
-          background: "rgba(52,211,153,0.06)",
-          borderColor: "rgba(52,211,153,0.28)",
-          boxShadow: "0 0 32px rgba(52,211,153,0.12), 0 1px 3px rgba(0,0,0,0.06)",
+          background: "rgba(103,142,141,0.06)",
+          borderColor: "rgba(103,142,141,0.28)",
+          boxShadow: "0 0 32px rgba(103,142,141,0.12), 0 1px 3px rgba(0,0,0,0.06)",
         };
       case "exiting":
         return {
@@ -231,8 +231,8 @@ function ApprovalContent() {
           transform: exitDir === "left"
             ? "translateX(-28px) scale(0.98)"
             : "translateX(28px) scale(0.98)",
-          background: exitDir === "left" ? "rgba(52,211,153,0.04)" : "var(--bg-card)",
-          borderColor: exitDir === "left" ? "rgba(52,211,153,0.15)" : "var(--border-subtle)",
+          background: exitDir === "left" ? "rgba(103,142,141,0.04)" : "var(--bg-card)",
+          borderColor: exitDir === "left" ? "rgba(103,142,141,0.15)" : "var(--border-subtle)",
           boxShadow: "none",
         };
       case "entering":
@@ -288,7 +288,7 @@ function ApprovalContent() {
                 className="w-6 h-6 rounded-full text-[10px] font-bold flex items-center justify-center transition-all duration-150"
                 style={
                   states[e.id] === "approved"
-                    ? { background: "rgba(52,211,153,0.15)", color: "#34d399" }
+                    ? { background: "rgba(103,142,141,0.15)", color: "#678E8D" }
                     : states[e.id] === "skipped"
                     ? { background: "var(--bg-elevated)", color: "var(--ink-muted)" }
                     : i === current
@@ -315,7 +315,7 @@ function ApprovalContent() {
         {/* Professor header */}
         <div
           className="px-6 py-5 border-b flex items-center justify-between"
-          style={{ borderColor: showSentBadge ? "rgba(52,211,153,0.2)" : "var(--border-subtle)", transition: "border-color 0.35s ease" }}
+          style={{ borderColor: showSentBadge ? "rgba(103,142,141,0.2)" : "var(--border-subtle)", transition: "border-color 0.35s ease" }}
         >
           <div className="flex items-center gap-3.5">
             <div
@@ -343,7 +343,7 @@ function ApprovalContent() {
           {showSentBadge && (
             <div
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full animate-fade-in"
-              style={{ background: "rgba(52,211,153,0.12)", color: "#34d399" }}
+              style={{ background: "rgba(103,142,141,0.12)", color: "#678E8D" }}
             >
               <Check className="w-3 h-3" strokeWidth={3} />
               Sent
@@ -398,9 +398,9 @@ function ApprovalContent() {
             onClick={handleApprove}
             disabled={!!sendingId}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-60"
-            style={{ background: "rgba(52,211,153,0.1)", color: "#34d399", border: "1px solid rgba(52,211,153,0.2)" }}
-            onMouseEnter={(e) => { if (!sendingId) { e.currentTarget.style.background = "rgba(52,211,153,0.16)"; e.currentTarget.style.boxShadow = "0 0 16px rgba(52,211,153,0.12)"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; e.currentTarget.style.boxShadow = "none"; }}
+            style={{ background: "rgba(103,142,141,0.1)", color: "#678E8D", border: "1px solid rgba(103,142,141,0.2)" }}
+            onMouseEnter={(e) => { if (!sendingId) { e.currentTarget.style.background = "rgba(103,142,141,0.18)"; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(103,142,141,0.1)"; }}
           >
             <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
             Approve & Send

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Upload, FileText, PenLine, Check, X } from "lucide-react";
+import { Check, Upload, X } from "lucide-react";
 
 type Path = "A" | "B";
 
@@ -30,7 +30,7 @@ interface Errors {
 
 interface ExtractionResult {
   fields: Record<string, string>;
-  cvText: string;
+  cv_filename: string;
 }
 
 const defaultForm: FormState = {
@@ -96,20 +96,20 @@ function CVUploadZone({
           onMouseEnter={(e) => (e.currentTarget.style.borderColor = "var(--border-strong)")}
           onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border-default)")}
         >
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "var(--bg-elevated)" }}>
-            <Upload className="w-5 h-5" style={{ color: "var(--ink-muted)" }} />
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: "rgba(103,142,141,0.1)" }}>
+            <Upload className="w-5 h-5" style={{ color: "#678E8D" }} />
           </div>
           <div className="text-center">
             <p className="text-sm font-medium mb-0.5" style={{ color: "var(--ink-secondary)" }}>
-              Drag & drop or <span style={{ color: "#5C7C89" }}>click to browse</span>
+              Drag & drop or <span style={{ color: "#678E8D" }}>click to browse</span>
             </p>
             <p className="text-xs" style={{ color: "var(--ink-muted)" }}>PDF up to 5MB</p>
           </div>
         </button>
       ) : (
-        <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "rgba(52,211,153,0.04)", borderColor: "rgba(52,211,153,0.18)" }}>
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(52,211,153,0.1)" }}>
-            <FileText className="w-5 h-5" style={{ color: "#34d399" }} />
+        <div className="rounded-2xl border p-5 flex items-center gap-4" style={{ background: "rgba(103,142,141,0.05)", borderColor: "#BBD2DD" }}>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(103,142,141,0.1)" }}>
+            <img src="/icons/resume-preview.png" className="w-5 h-5" alt="" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate" style={{ color: "var(--ink)" }}>{cvName}</p>
@@ -162,8 +162,8 @@ function Field({
 function SectionLabel({ title, first }: { title: string; first?: boolean }) {
   return (
     <p
-      className={`text-xs font-semibold uppercase tracking-wider mb-4${first ? "" : " mt-8"}`}
-      style={{ color: "var(--ink-muted)" }}
+      className={`text-xs font-medium uppercase mb-4${first ? "" : " mt-8"}`}
+      style={{ color: "#678E8D", letterSpacing: "0.08em" }}
     >
       {title}
     </p>
@@ -338,7 +338,7 @@ export default function ProfilePage() {
           }
           setForm({
             path: restoredPath,
-            cvName: restoredPath === "A" ? "Uploaded resume" : "",
+            cvName: restoredPath === "A" ? (profile.cv_filename || "Uploaded resume") : "",
             cvText: profile.cv_text ?? "",
             name: profile.name ?? "",
             school: profile.school ?? "",
@@ -427,26 +427,28 @@ export default function ProfilePage() {
     setSaveError(null);
 
     let body: Record<string, unknown>;
+    let extracted: ExtractionResult | null = null;
 
     if (form.path === "A") {
       // Await background extraction (usually already done by the time user clicks save)
-      const extracted = extractionPromise.current ? await extractionPromise.current : null;
+      extracted = extractionPromise.current ? await extractionPromise.current : null;
 
       if (extracted) {
+        // cv_text and cv_filename were already saved to Supabase by parse-cv — don't resend them
         body = {
           name: extracted.fields.name ?? null,
           school: extracted.fields.school ?? null,
           year: extracted.fields.year ?? null,
           major: extracted.fields.major ?? null,
-          coursework: extracted.fields.coursework ?? null,
-          experience: extracted.fields.experience ?? null,
+          coursework: extracted.fields.relevant_coursework ?? null,
+          experience: extracted.fields.research_experience ?? null,
           skills: extracted.fields.skills ?? null,
           extracurriculars: extracted.fields.extracurriculars ?? null,
-          anything_else: form.anythingElse || null,
-          cv_text: extracted.cvText || null,
+          anything_else: extracted.fields.anything_else || form.anythingElse || null,
         };
       } else {
-        // No new extraction (edit view without re-upload), preserve existing fields
+        // No new extraction (edit view without re-upload) — save whatever is in the form fields.
+        // Do not include cv_text so parse-cv's stored PDF is preserved.
         body = {
           name: form.name || null,
           school: form.school || null,
@@ -457,7 +459,6 @@ export default function ProfilePage() {
           skills: form.skills || null,
           extracurriculars: form.extracurriculars || null,
           anything_else: form.anythingElse || null,
-          cv_text: form.cvText || null,
         };
       }
     } else {
@@ -485,6 +486,26 @@ export default function ProfilePage() {
       if (!res.ok) throw new Error(data.error ?? "Save failed");
 
       try { localStorage.setItem(PATH_KEY, form.path); } catch {}
+
+      // Populate form with extracted fields so they show immediately after save
+      if (form.path === "A" && extracted) {
+        setForm((f) => ({
+          ...f,
+          cvName: extracted!.cv_filename || f.cvName,
+          cvText: "has_cv",
+          name: extracted!.fields.name || "",
+          school: extracted!.fields.school || "",
+          year: extracted!.fields.year || "",
+          whatYouStudy: extracted!.fields.major || "",
+          coursework: extracted!.fields.relevant_coursework || "",
+          experience: extracted!.fields.research_experience || "",
+          skills: extracted!.fields.skills || "",
+          extracurriculars: extracted!.fields.extracurriculars || "",
+          anythingElse: extracted!.fields.anything_else || "",
+        }));
+        extractionPromise.current = null;
+      }
+
       if (isEditView) {
         setSaved(true);
       } else {
@@ -500,12 +521,12 @@ export default function ProfilePage() {
   if (!loaded) return null;
 
   const cardStyle = (active: boolean) => ({
-    background: active ? "rgba(31,73,89,0.05)" : "var(--bg-card)",
-    borderColor: active ? "#1F4959" : "var(--border-default)",
+    background: active ? "rgba(103,142,141,0.1)" : "var(--bg-card)",
+    borderColor: active ? "#678E8D" : "var(--border-default)",
   });
-  const iconBg = (active: boolean) => active ? "rgba(31,73,89,0.1)" : "var(--bg-elevated)";
-  const iconColor = (active: boolean) => active ? "#1F4959" : "var(--ink-muted)";
-  const labelColor = (active: boolean) => active ? "#1F4959" : "var(--ink)";
+  const iconBg = (active: boolean) => active ? "rgba(103,142,141,0.15)" : "var(--bg-elevated)";
+  const iconColor = (active: boolean) => active ? "#678E8D" : "var(--ink-muted)";
+  const labelColor = (active: boolean) => active ? "#678E8D" : "var(--ink)";
 
   const saveDisabled = saving || (form.path === "A" && !form.cvName);
 
@@ -515,7 +536,7 @@ export default function ProfilePage() {
 
         {isEditView && (
           <div className="mb-10 text-center">
-            <h2 className="text-3xl font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
+            <h2 className="text-3xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
               Your profile
             </h2>
             <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
@@ -532,7 +553,7 @@ export default function ProfilePage() {
             style={cardStyle(form.path === "A")}
           >
             <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: iconBg(form.path === "A") }}>
-              <Upload className="w-4 h-4" style={{ color: iconColor(form.path === "A") }} />
+              <img src="/icons/upload-resume.png" className="w-4 h-4" alt="" />
             </div>
             <p className="text-sm font-semibold" style={{ color: labelColor(form.path === "A") }}>
               Upload your resume
@@ -545,7 +566,7 @@ export default function ProfilePage() {
             style={cardStyle(form.path === "B")}
           >
             <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: iconBg(form.path === "B") }}>
-              <PenLine className="w-4 h-4" style={{ color: iconColor(form.path === "B") }} />
+              <img src="/icons/fill-out-manually.png" className="w-4 h-4" alt="" />
             </div>
             <p className="text-sm font-semibold" style={{ color: labelColor(form.path === "B") }}>
               Fill it in manually
@@ -557,7 +578,7 @@ export default function ProfilePage() {
         {form.path === "A" && (
           <>
             <div className="mb-6">
-              <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--ink-muted)" }}>Resume</p>
+              <p className="text-xs font-medium uppercase mb-3" style={{ color: "#678E8D", letterSpacing: "0.08em" }}>Resume</p>
               <CVUploadZone
                 cvName={form.cvName}
                 onUpload={handleUpload}
@@ -572,7 +593,10 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {form.cvName && (
+            {/* Once extracted data is stored, show all editable fields */}
+            {form.cvText ? (
+              <ProfileFields form={form} errors={errors} set={set} />
+            ) : form.cvName ? (
               <>
                 <SectionLabel title="Anything else?" first />
                 <Field label="Anything you'd like researchers to know" optional>
@@ -588,7 +612,7 @@ export default function ProfilePage() {
                   />
                 </Field>
               </>
-            )}
+            ) : null}
           </>
         )}
 
@@ -607,7 +631,7 @@ export default function ProfilePage() {
               onClick={handleSave}
               disabled={saveDisabled}
               className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }}
+              style={{ background: "#678E8D", color: "#FFFFFF" }}
             >
               {saving ? (
                 <>

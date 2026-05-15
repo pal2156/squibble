@@ -9,8 +9,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const [open, setOpen] = useState(true);
   const pathname = usePathname();
 
-  // Login page renders without the shell
-  if (pathname === "/login") {
+  // Landing page renders without the shell
+  if (pathname === "/") {
     return <>{children}</>;
   }
 

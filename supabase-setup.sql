@@ -65,6 +65,7 @@ create table if not exists public.profiles (
   extracurriculars text,
   anything_else text,
   cv_text text,
+  cv_filename text,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );

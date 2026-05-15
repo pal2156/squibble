@@ -16,7 +16,7 @@ function LoadingModal({
     <div
       className="fixed inset-0 flex items-center justify-center z-50"
       style={{
-        background: "rgba(14, 22, 28, 0.45)",
+        background: "rgba(35, 44, 51, 0.7)",
         backdropFilter: "blur(4px)",
         opacity: visible ? 1 : 0,
         transition: "opacity 300ms ease",
@@ -73,7 +73,7 @@ const selectClassName =
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--ink-tertiary, var(--ink-secondary))" }}>
+    <p className="text-xs font-medium uppercase tracking-widest mb-3" style={{ color: "#678E8D", letterSpacing: "0.08em" }}>
       {children}
     </p>
   );
@@ -164,7 +164,7 @@ export default function CampaignPage() {
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-2xl">
         <div className="mb-9 text-center">
-          <h1 className="text-2xl font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
+          <h1 className="text-2xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             New campaign
           </h1>
           <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
@@ -300,8 +300,8 @@ export default function CampaignPage() {
           className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
           style={
             ready && !loading
-              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 24px rgba(31,73,89,0.5)" }
-              : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
+              ? { background: "#678E8D", color: "#FFFFFF" }
+              : { background: "#BBD2DD", color: "#FFFFFF" }
           }
         >
           Find faculty

@@ -5,21 +5,21 @@ import { X, Building2, Calendar } from "lucide-react";
 import type { EmailStatus, SentEmail } from "@/lib/mock-data";
 
 const statusConfig: Record<EmailStatus, { label: string; dot: string; bg: string; text: string }> = {
-  "Positive Reply": { label: "Positive Reply", dot: "#10b981", bg: "rgba(16,185,129,0.1)", text: "#34d399" },
-  "No Response": { label: "No Response", dot: "#6b7280", bg: "rgba(107,114,128,0.08)", text: "#9ca3af" },
-  "Negative Reply": { label: "Negative Reply", dot: "#ef4444", bg: "rgba(239,68,68,0.08)", text: "#f87171" },
+  "Positive Reply": { label: "Positive Reply", dot: "#678E8D", bg: "rgba(103,142,141,0.1)", text: "#678E8D" },
+  "No Response": { label: "No Response", dot: "#BBD2DD", bg: "rgba(187,210,221,0.25)", text: "#3C5352" },
+  "Negative Reply": { label: "Negative Reply", dot: "#3C5352", bg: "rgba(60,83,82,0.08)", text: "#3C5352" },
 };
 
 const replyStyle: Record<EmailStatus, { bg: string; border: string; nameColor: string }> = {
   "Positive Reply": {
-    bg: "rgba(16,185,129,0.05)",
-    border: "rgba(16,185,129,0.18)",
-    nameColor: "#10b981",
+    bg: "rgba(103,142,141,0.05)",
+    border: "#BBD2DD",
+    nameColor: "#678E8D",
   },
   "Negative Reply": {
-    bg: "rgba(239,68,68,0.04)",
-    border: "rgba(239,68,68,0.15)",
-    nameColor: "#ef4444",
+    bg: "rgba(60,83,82,0.04)",
+    border: "#BBD2DD",
+    nameColor: "#3C5352",
   },
   "No Response": { bg: "var(--bg-elevated)", border: "var(--border-subtle)", nameColor: "var(--ink)" },
 };
@@ -71,7 +71,7 @@ export default function EmailDetailPanel({ email, onClose }: Props) {
       {/* Overlay */}
       <div
         className="fixed inset-0 z-40"
-        style={{ background: "rgba(0,0,0,0.22)" }}
+        style={{ background: "rgba(0,0,0,0.45)" }}
         onClick={onClose}
       />
 
@@ -82,7 +82,7 @@ export default function EmailDetailPanel({ email, onClose }: Props) {
           width: "40%",
           background: "var(--bg-card)",
           borderLeft: "1px solid var(--border-subtle)",
-          boxShadow: "-12px 0 48px rgba(1,20,37,0.1)",
+          boxShadow: "-12px 0 48px rgba(35,44,51,0.25)",
           transform: visible ? "translateX(0)" : "translateX(100%)",
           transition: "transform 0.28s cubic-bezier(0.4,0,0.2,1)",
         }}

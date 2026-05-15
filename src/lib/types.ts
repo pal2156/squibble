@@ -13,6 +13,7 @@ export interface Profile {
   extracurriculars: string | null;
   anything_else: string | null;
   cv_text: string | null;
+  cv_filename: string | null;
   created_at: string;
   updated_at: string;
 }

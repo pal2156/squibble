@@ -16,15 +16,15 @@ import {
 import { ChevronDown } from "lucide-react";
 import { SentEmail } from "@/lib/types";
 
-const SENT_COLOR = "#60a5fa";
-const RESP_COLOR = "#34d399";
-const NEG_COLOR = "#ef4444";
-const GRAY_COLOR = "#6b7280";
+const SENT_COLOR = "#678E8D";
+const RESP_COLOR = "#3C5352";
+const NEG_COLOR = "#BBD2DD";
+const GRAY_COLOR = "#BBD2DD";
 
 const DONUT_COLORS: Record<string, string> = {
-  "Positive Reply": RESP_COLOR,
-  "No Response": GRAY_COLOR,
-  "Negative Reply": NEG_COLOR,
+  "Positive Reply": "#678E8D",
+  "No Response": "#BBD2DD",
+  "Negative Reply": "#3C5352",
 };
 
 type TimeRange = "All Campaigns" | "Last 7 Days" | "Last 30 Days" | "Last 90 Days";
@@ -246,10 +246,10 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
                 <stop offset="100%" stopColor={RESP_COLOR} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="rgba(92,124,137,0.09)" />
+            <CartesianGrid vertical={false} stroke="rgba(187,210,221,0.6)" />
             <XAxis
               dataKey="campaign"
-              tick={{ fontSize: 9, fill: "#7A9DAB" }}
+              tick={{ fontSize: 9, fill: "#3C5352" }}
               tickLine={false}
               axisLine={false}
               dy={6}
@@ -258,7 +258,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
             <Tooltip
               content={<CampaignTooltip />}
               cursor={{
-                stroke: "rgba(92,124,137,0.25)",
+                stroke: "rgba(103,142,141,0.3)",
                 strokeWidth: 1,
                 strokeDasharray: "4 3",
               }}
@@ -326,6 +326,7 @@ function SegmentLabel({
   innerRadius,
   outerRadius,
   value,
+  name,
 }: {
   cx: number;
   cy: number;
@@ -333,16 +334,18 @@ function SegmentLabel({
   innerRadius: number;
   outerRadius: number;
   value: number;
+  name: string;
 }) {
   if (!value) return null;
   const r = innerRadius + (outerRadius - innerRadius) * 0.55;
   const x = cx + r * Math.cos(-midAngle * RADIAN);
   const y = cy + r * Math.sin(-midAngle * RADIAN);
+  const textColor = name === "No Response" ? "#232C33" : "#FFFFFF";
   return (
     <text
       x={x}
       y={y}
-      fill="white"
+      fill={textColor}
       textAnchor="middle"
       dominantBaseline="central"
       fontSize={11}

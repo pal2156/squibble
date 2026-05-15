@@ -72,7 +72,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in"
       style={{
-        background: "rgba(14, 22, 28, 0.45)",
+        background: "rgba(35, 44, 51, 0.7)",
         backdropFilter: "blur(4px)",
       }}
       onClick={onClose}
@@ -82,7 +82,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
         style={{
           background: "var(--bg-card)",
           border: "1px solid var(--border-subtle)",
-          boxShadow: "0 24px 64px rgba(1,20,37,0.18), 0 4px 16px rgba(0,0,0,0.08)",
+          boxShadow: "0 24px 64px rgba(35,44,51,0.35), 0 4px 16px rgba(0,0,0,0.15)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -105,7 +105,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold tracking-tight mb-2" style={{ color: "var(--ink)" }}>
+          <h2 className="text-2xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             Choose a plan
           </h2>
           <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>

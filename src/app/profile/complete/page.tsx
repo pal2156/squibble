@@ -22,7 +22,7 @@ export default function ProfileCompletePage() {
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-lg">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight mb-3" style={{ color: "var(--ink)" }}>
+          <h1 className="text-2xl font-medium mb-3" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             You&apos;re all set, {firstName}. Your profile is saved. Now let&apos;s put it to work.
           </h1>
           <p className="text-sm mb-2" style={{ color: "var(--ink-secondary)" }}>
@@ -36,7 +36,7 @@ export default function ProfileCompletePage() {
         <Link href="/campaign" className="block">
           <button
             className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-lg text-sm font-semibold tracking-wide transition-all duration-150"
-            style={{ background: "#1F4959", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.4)" }}
+            style={{ background: "#678E8D", color: "#fff", boxShadow: "0 0 16px rgba(103,142,141,0.35)" }}
           >
             START YOUR FIRST CAMPAIGN
             <ArrowRight className="w-3.5 h-3.5" />

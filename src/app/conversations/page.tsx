@@ -19,10 +19,10 @@ interface SentEmail {
 }
 
 const statusConfig: Record<EmailStatus, { label: string; dot: string; bg: string; text: string }> = {
-  "Positive Reply": { label: "Positive Reply", dot: "#10b981", bg: "rgba(16,185,129,0.1)", text: "#34d399" },
-  "No Response": { label: "No Response", dot: "#6b7280", bg: "rgba(107,114,128,0.08)", text: "#9ca3af" },
-  "Negative Reply": { label: "Negative Reply", dot: "#ef4444", bg: "rgba(239,68,68,0.08)", text: "#f87171" },
-  "Do Not Contact": { label: "Do Not Contact", dot: "#f59e0b", bg: "rgba(245,158,11,0.08)", text: "#fbbf24" },
+  "Positive Reply": { label: "Positive Reply", dot: "#678E8D", bg: "rgba(103,142,141,0.1)", text: "#678E8D" },
+  "No Response": { label: "No Response", dot: "#BBD2DD", bg: "rgba(187,210,221,0.25)", text: "#3C5352" },
+  "Negative Reply": { label: "Negative Reply", dot: "#3C5352", bg: "rgba(60,83,82,0.08)", text: "#3C5352" },
+  "Do Not Contact": { label: "Do Not Contact", dot: "#3C5352", bg: "rgba(60,83,82,0.08)", text: "#3C5352" },
 };
 
 const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
@@ -272,7 +272,7 @@ export default function ConversationsPage() {
                   <div className="flex items-start gap-3">
                     <div
                       className="w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold flex-shrink-0"
-                      style={{ background: "var(--bg-elevated)", color: "var(--ink-secondary)" }}
+                      style={{ background: "rgba(103,142,141,0.1)", color: "#678E8D" }}
                     >
                       {getInitials(conv.professor)}
                     </div>
@@ -328,8 +328,8 @@ export default function ConversationsPage() {
             <div className="flex items-start justify-between gap-4 mb-7">
               <div>
                 <h2
-                  className="text-base font-bold mb-1"
-                  style={{ color: "var(--ink)" }}
+                  className="text-base font-medium mb-1"
+                  style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}
                 >
                   {selected.professor}
                 </h2>
@@ -391,8 +391,8 @@ export default function ConversationsPage() {
                     style={{
                       color:
                         selected.status === "Positive Reply"
-                          ? "#10b981"
-                          : "#ef4444",
+                          ? "#678E8D"
+                          : "#3C5352",
                     }}
                   >
                     {selected.professor}

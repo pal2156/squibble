@@ -12,37 +12,57 @@ interface Props {
 
 type Phase = "generating" | "suggested" | "editing";
 
+const FAMOUS_UNIS: Record<string, string> = {
+  "university of california berkeley": "Berkeley",
+  "uc berkeley": "Berkeley",
+  "massachusetts institute of technology": "MIT",
+  "california institute of technology": "Caltech",
+  "harvard university": "Harvard",
+  "stanford university": "Stanford",
+  "princeton university": "Princeton",
+  "yale university": "Yale",
+  "columbia university": "Columbia",
+  "university of pennsylvania": "Penn",
+  "johns hopkins university": "JHU",
+  "duke university": "Duke",
+  "northwestern university": "Northwestern",
+  "university of chicago": "Chicago",
+  "university of illinois urbana-champaign": "UIUC",
+  "university of illinois at urbana-champaign": "UIUC",
+  "university of michigan": "UMich",
+  "university of michigan ann arbor": "UMich",
+};
+
 // TODO: Connect to actual Claude API
 async function mockGenerateName(
   university: string,
   research: string,
-  availability: string
+  _availability: string
 ): Promise<string> {
   await new Promise((r) => setTimeout(r, 1200 + Math.random() * 800));
 
-  const uniShort = university
-    .replace(/^(University of |The University of |UC )/i, "")
-    .split(",")[0]
-    .trim()
-    .split(" ")
-    .slice(0, 2)
-    .join(" ");
+  const uniKey = university.toLowerCase().trim();
+  const uniShort =
+    FAMOUS_UNIS[uniKey] ??
+    university
+      .replace(/^(University of |The University of |UC )/i, "")
+      .split(",")[0]
+      .trim()
+      .split(" ")
+      .slice(0, 2)
+      .join(" ");
 
-  const stop = new Set([
-    "i", "a", "an", "the", "and", "or", "in", "on", "at", "to", "for",
-    "with", "about", "want", "research", "study", "explore", "looking",
-  ]);
-  const keywords = research
+  const subfield = research
+    .replace(/\b(research|study|explore|looking for|interested in|want to)\b/gi, "")
     .replace(/[^a-zA-Z\s]/g, "")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !stop.has(w.toLowerCase()))
-    .slice(0, 3)
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter((w) => w.length > 0)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(" ");
 
-  const timeline = availability.split(/[,\-–]/)[0].trim() || "Summer 2025";
-
-  return `${uniShort} ${keywords}, ${timeline}`;
+  return `${uniShort} ${subfield}`;
 }
 
 export function CampaignNameSuggestion({ university, research, availability, onConfirm }: Props) {
@@ -172,7 +192,7 @@ export function CampaignNameSuggestion({ university, research, availability, onC
         <button
           onClick={() => onConfirm(name)}
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all"
-          style={{ background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.35)" }}
+          style={{ background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(103,142,141,0.35)" }}
         >
           <Check className="w-3.5 h-3.5" />
           Keep this name

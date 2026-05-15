@@ -3,10 +3,10 @@ import { anthropic, extractJsonString, parseClaudeJson } from "@/lib/anthropic";
 
 const encoder = new TextEncoder();
 
-// Sonnet: reasoning-heavy tasks (web search strategy, professor ranking)
+// Sonnet: reasoning-heavy tasks (web search strategy, professor ranking, email drafting)
 const SONNET = "claude-sonnet-4-6";
-// Haiku: mechanical tasks (data extraction, title generation, JSON reformatting)
-const HAIKU = "claude-haiku-4-5-20251001";
+// Haiku: mechanical tasks (data extraction, title generation, JSON reformatting, profile reads)
+const HAIKU = "claude-haiku-4-5";
 
 function sse(data: object): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
@@ -153,8 +153,10 @@ Extract up to ${campaign.professor_count ?? 10} professors. Return ONLY a JSON a
           throw new Error("Could not extract any professors from the faculty directory.");
         }
 
-        // ── Step 3: Haiku visits each professor's individual profile page ──────
-        // Best-effort — if this step fails, we continue with the data we have
+        // ── Step 3: Haiku reads each professor's faculty/lab page for research ──
+        // Searches "[name] [university] research" and reads their profile page.
+        // Extracts a 2-3 sentence research_description (focus + active project)
+        // and up to 5 keyword topics. Runs for all professors.
         controller.enqueue(sse({ type: "progress", message: "Reading professor profiles..." }));
 
         type EnrichedProfessor = RawProfessor & {
@@ -170,50 +172,64 @@ Extract up to ${campaign.professor_count ?? 10} professors. Return ONLY a JSON a
           research_areas: [],
         }));
 
-        // Limit to 10 profile visits per call to avoid overwhelming the model
-        const profileLines = rawProfessors
-          .filter((p) => p.profile_url)
-          .slice(0, 10)
-          .map((p) => `- ${p.name}: ${p.profile_url}`)
-          .join("\n");
+        const profsToEnrich = rawProfessors.slice(0, 10);
 
-        if (profileLines) {
-          try {
-            const step3Res = await anthropic.messages.create({
-              model: HAIKU,
-              max_tokens: 4096,
-              tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
-              system:
-                "You visit professor profile pages and extract research information. Return ONLY a valid JSON array.",
-              messages: [
-                {
-                  role: "user",
-                  content: `Visit each of these professor profile pages and extract their research description (2-3 sentences) and research area keywords (2-4 items):
-${profileLines}
+        if (profsToEnrich.length > 0) {
+          const profileResults = await Promise.allSettled(
+            profsToEnrich.map(async (p) => {
+              const profileHint = p.profile_url
+                ? `\nHint: their profile page is at ${p.profile_url}`
+                : "";
+              const res = await anthropic.messages.create({
+                model: HAIKU,
+                max_tokens: 1024,
+                tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
+                system:
+                  "You find professor research information by reading their faculty profile page or lab page. Do not read papers or abstracts. Return ONLY a valid JSON object with no markdown fences, no prose, no explanation.",
+                messages: [
+                  {
+                    role: "user",
+                    content: `Search for "${p.name} ${campaign.university} research" and read their faculty profile page or lab page from the top result.${profileHint}
 
-Return ONLY a JSON array where each object has: name (string), description (string), research_areas (string[]).`,
-                },
-              ],
-            });
+Extract:
+1. A one-sentence summary of their current research focus
+2. One specific active project, initiative, or topic they are currently working on (if mentioned on the page)
 
-            const raw3 = extractText(step3Res.content);
-            const profileData = await robustJson<
-              Array<{ name: string; description: string; research_areas: string[] }>
-            >(
-              raw3,
-              "Extract professor research info from this text and return a JSON array. Each object: name (string), description (string), research_areas (string[])."
-            );
+Combine 1 and 2 into a single research_description that is 2-3 sentences max. Also extract up to 5 keyword topics describing their work.
 
-            const profileMap = new Map(profileData.map((p) => [p.name, p]));
-            enrichedProfessors = enrichedProfessors.map((p) => {
-              const match = profileMap.get(p.name);
-              return match
-                ? { ...p, description: match.description, research_areas: match.research_areas }
-                : p;
-            });
-          } catch {
-            // Profile enrichment is best-effort — proceed with basic professor data
-          }
+Return ONLY this JSON:
+{"name": "${p.name}", "description": "<2-3 sentence research_description combining focus and active project>", "research_areas": ["<keyword1>", "<keyword2>", "<keyword3>", "<keyword4>", "<keyword5>"]}
+
+If no research information is found on their page, return:
+{"name": "${p.name}", "description": null, "research_areas": []}`,
+                  },
+                ],
+              });
+              const raw = extractText(res.content);
+              if (!raw) throw new Error(`No text response for ${p.name}`);
+              return robustJson<{ name: string; description: string | null; research_areas: string[] }>(
+                raw,
+                `Extract research info for professor ${p.name} and return: {"name": "${p.name}", "description": "...", "research_areas": [...]}`
+              );
+            })
+          );
+
+          const profileMap = new Map<string, { description: string | null; research_areas: string[] }>();
+          profileResults.forEach((result, i) => {
+            if (result.status === "fulfilled") {
+              profileMap.set(profsToEnrich[i].name, {
+                description: result.value.description,
+                research_areas: result.value.research_areas ?? [],
+              });
+            } else {
+              console.error(`Profile fetch failed for ${profsToEnrich[i].name}:`, result.reason);
+            }
+          });
+
+          enrichedProfessors = enrichedProfessors.map((p) => {
+            const match = profileMap.get(p.name);
+            return match ? { ...p, description: match.description, research_areas: match.research_areas } : p;
+          });
         }
 
         // ── Step 4: Sonnet ranks all professors by fit ─────────────────────────
@@ -249,11 +265,11 @@ Research interest: ${campaign.research_interest}
 Availability: ${campaign.availability ?? "flexible"}
 
 Ranking criteria (in order of weight):
-1. Research overlap with the student's interest (most important)
-2. Student background fit (coursework, experience, skills)
-3. Seniority (Assistant/Associate Professors score higher than Full Professors)
-4. Lab activity (active projects, recent publications)
-5. Email availability (no email = deprioritize)
+1. Research overlap: read each professor's description field carefully and score based on how directly their stated research aligns with the student's interest. Professors whose description is null score no higher than 60 on this criterion.
+2. Student background fit: how well the student's coursework, experience, and skills match the professor's research area.
+3. Seniority: Assistant and Associate Professors score higher than Full Professors (more open to student help).
+4. Lab activity: infer from description quality — specific named projects or methods mentioned indicate an active lab.
+5. Email availability: no email address means deprioritize.
 
 Professors:
 ${JSON.stringify(enrichedProfessors, null, 2)}
@@ -299,11 +315,10 @@ Return ONLY a JSON array with all original fields plus "fit_score" (integer 0-10
           messages: [
             {
               role: "user",
-              content: `Generate a campaign title. Format: "{University short name} {2-3 keyword research description} · {condensed timeline}". Example: "MIT Condensed Matter Physics · Summer 2025". Use a middle dot (·), not an em dash. 6-8 words total.
+              content: `Generate a campaign title. Format: "{University short name} {full research subfield}". Examples: "JHU Behavioral Economics", "Columbia Condensed Matter Physics", "Berkeley Astrophysics", "MIT Machine Learning". For famous universities use the most recognizable short form (Berkeley, MIT, Caltech, Harvard, Stanford, Princeton, Yale, Columbia, Penn, JHU, Duke, Northwestern, Chicago). For others use standard abbreviations (UIUC, UMich, etc.). Include the full subfield name. Drop any timeline, the word "Research", and all other descriptors.
 
 University: ${campaign.university}
 Research interest: ${campaign.research_interest}
-Availability: ${campaign.availability ?? "flexible"}
 
 Return ONLY JSON: {"title": "..."}`,
             },
@@ -321,7 +336,7 @@ Return ONLY JSON: {"title": "..."}`,
         } catch {
           // Synthesize a fallback title from known inputs
           const shortUniv = campaign.university.split(" ").pop() ?? campaign.university;
-          title = `${shortUniv} ${campaign.research_interest} · ${campaign.availability ?? "Research"}`;
+          title = `${shortUniv} ${campaign.research_interest}`;
         }
 
         // ── Save results ───────────────────────────────────────────────────────

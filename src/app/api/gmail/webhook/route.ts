@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     try {
       const classRes = await anthropic.messages.create({
         // Haiku: mechanical binary classification — no reasoning required
-        model: "claude-haiku-4-5-20251001",
+        model: "claude-haiku-4-5",
         max_tokens: 10,
         messages: [
           {

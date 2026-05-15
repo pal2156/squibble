@@ -11,38 +11,33 @@ const config: Config = {
     extend: {
       colors: {
         bg: {
-          base: "#EEF5F8",
-          surface: "#E4EFF4",
+          base: "#F1F6F9",
+          surface: "#FFFFFF",
           card: "#FFFFFF",
-          elevated: "#D6E8EF",
+          elevated: "#F1F6F9",
         },
         border: {
-          subtle: "rgba(92,124,137,0.12)",
-          DEFAULT: "rgba(92,124,137,0.22)",
-          strong: "rgba(92,124,137,0.42)",
+          subtle: "#BBD2DD",
+          DEFAULT: "#BBD2DD",
+          strong: "#678E8D",
         },
         ink: {
-          DEFAULT: "#242424",
-          secondary: "#4A6C7A",
-          muted: "#7A9DAB",
+          DEFAULT: "#232C33",
+          secondary: "#3C5352",
+          muted: "rgba(60,83,82,0.6)",
         },
         accent: {
-          DEFAULT: "#1F4959",
-          hover: "#255e76",
-          muted: "rgba(31,73,89,0.07)",
-        },
-        emerald: {
-          glow: "rgba(52,211,153,0.12)",
+          DEFAULT: "#678E8D",
+          hover: "#3C5352",
+          muted: "rgba(103,142,141,0.1)",
         },
       },
       fontFamily: {
-        sans: [
-          "-apple-system",
-          "BlinkMacSystemFont",
-          '"Inter"',
-          '"Segoe UI"',
-          "sans-serif",
-        ],
+        sans: ["var(--font-dm-sans)", "DM Sans", "sans-serif"],
+      },
+      letterSpacing: {
+        logo: "-0.05em",
+        heading: "-0.03em",
       },
       animation: {
         "fade-in": "fadeIn 0.2s ease-out",

@@ -7,11 +7,11 @@ import type { Professor } from "@/lib/types";
 import { cleanDescription } from "@/lib/utils";
 
 function fitScoreStyle(score: number | null): { bg: string; text: string; border: string } {
-  if (!score) return { bg: "rgba(92,124,137,0.12)", text: "#5C7C89", border: "rgba(92,124,137,0.25)" };
-  if (score >= 90) return { bg: "rgba(52,211,153,0.1)", text: "#34d399", border: "rgba(52,211,153,0.2)" };
-  if (score >= 85) return { bg: "rgba(92,124,137,0.12)", text: "#5C7C89", border: "rgba(92,124,137,0.25)" };
-  if (score >= 80) return { bg: "rgba(59,130,246,0.1)", text: "#60a5fa", border: "rgba(59,130,246,0.2)" };
-  return { bg: "rgba(251,191,36,0.08)", text: "#fbbf24", border: "rgba(251,191,36,0.15)" };
+  if (!score) return { bg: "rgba(103,142,141,0.1)", text: "#678E8D", border: "rgba(103,142,141,0.2)" };
+  if (score >= 90) return { bg: "rgba(103,142,141,0.15)", text: "#678E8D", border: "rgba(103,142,141,0.3)" };
+  if (score >= 85) return { bg: "rgba(103,142,141,0.1)", text: "#678E8D", border: "rgba(103,142,141,0.2)" };
+  if (score >= 80) return { bg: "rgba(60,83,82,0.08)", text: "#3C5352", border: "rgba(60,83,82,0.15)" };
+  return { bg: "rgba(187,210,221,0.2)", text: "#3C5352", border: "#BBD2DD" };
 }
 
 function ProfessorCard({
@@ -38,10 +38,10 @@ function ProfessorCard({
       onClick={onToggle}
       className="w-full text-left rounded-xl border p-4 transition-all duration-150 group relative"
       style={{
-        background: selected ? "rgba(31,73,89,0.04)" : "var(--bg-card)",
-        borderColor: selected ? "#5C7C89" : "var(--border-subtle)",
+        background: selected ? "rgba(103,142,141,0.1)" : "var(--bg-card)",
+        borderColor: selected ? "#678E8D" : "var(--border-subtle)",
         boxShadow: selected
-          ? "0 0 0 1px rgba(92,124,137,0.18), 0 1px 3px rgba(0,0,0,0.06)"
+          ? "0 0 0 1px rgba(103,142,141,0.25), 0 1px 3px rgba(0,0,0,0.06)"
           : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
@@ -226,7 +226,7 @@ function ProfessorsContent() {
     <div className="px-8 py-8 max-w-3xl mx-auto">
       {campaignTitle && (
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold tracking-tight" style={{ color: "var(--ink)" }}>
+          <h1 className="text-3xl font-medium" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             {campaignTitle}
           </h1>
         </div>
@@ -235,7 +235,7 @@ function ProfessorsContent() {
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="text-xl font-bold tracking-tight mb-0.5" style={{ color: "var(--ink)" }}>
+            <h2 className="text-xl font-medium mb-0.5" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
               Your best shots
             </h2>
             <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
@@ -266,7 +266,7 @@ function ProfessorsContent() {
 
       <div
         className="sticky bottom-5 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border backdrop-blur-xl"
-        style={{ background: "rgba(255,255,255,0.96)", borderColor: "var(--border-default)", boxShadow: "0 -4px 20px rgba(31,73,89,0.07), 0 0 0 1px rgba(92,124,137,0.1)" }}
+        style={{ background: "rgba(60,83,82,0.97)", borderColor: "var(--border-default)", boxShadow: "0 -4px 20px rgba(103,142,141,0.12), 0 0 0 1px rgba(103,142,141,0.15)" }}
       >
         <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
           {selected.size === 0 ? "Select professors to continue" : `${selected.size} selected`}
@@ -277,7 +277,7 @@ function ProfessorsContent() {
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
           style={
             selected.size > 0 && !saving
-              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(31,73,89,0.5)" }
+              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(103,142,141,0.4)" }
               : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
           }
         >
