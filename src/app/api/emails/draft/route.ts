@@ -2,19 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { anthropic, extractJsonString } from "@/lib/anthropic";
 
-const SUBJECT_LINES = [
-  "Undergraduate Research Inquiry",
-  "Research Position Inquiry",
-  "Interest in Your Work",
-  "Seeking Research Experience",
-  "Research Collaboration Inquiry",
-  "Looking to Contribute",
-  "Research Participation Interest",
-  "Research Contribution Inquiry",
-  "Research Engagement Inquiry",
-  "Interest in Your Research",
-];
-
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -45,8 +32,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "No professors selected" }, { status: 400 });
   }
 
-  // Build the full student context including cv_text
-  const studentName = profile?.name ?? null;
   const studentContext = profile
     ? [
         `Full name: ${profile.name ?? "(not provided)"}`,
@@ -58,13 +43,13 @@ export async function POST(request: Request) {
         profile.skills ? `Skills: ${profile.skills}` : null,
         profile.extracurriculars ? `Extracurriculars: ${profile.extracurriculars}` : null,
         profile.anything_else ? `Additional context: ${profile.anything_else}` : null,
-        profile.cv_text
-          ? `\nCV TEXT (mine specific project names, course titles, tools, and methods from here):\n${profile.cv_text.slice(0, 5000)}`
-          : null,
       ]
         .filter(Boolean)
         .join("\n")
     : "(no profile data — write a generic outreach email)";
+
+  // Path A: student uploaded a CV (cv_text stores base64 PDF); Path B: manual form entry
+  const isPathA = !!(profile?.cv_text && profile?.cv_filename);
 
   const emailRows: Array<{
     user_id: string;
@@ -85,47 +70,67 @@ export async function POST(request: Request) {
     const profKeywords = Array.isArray(prof.research_areas) && prof.research_areas.length > 0
       ? prof.research_areas.join(", ")
       : "(none)";
+    const profTitle = prof.title ?? "";
+
+    // Use "Dear Professor" only when the title explicitly contains the word Professor
+    const titleIncludesProfessor = /\bprofessor\b/i.test(profTitle);
+    const salutation = titleIncludesProfessor
+      ? `Dear Professor ${lastName},`
+      : `Dear Dr. ${lastName},`;
 
     // Compensation: only mention if paid, and only naturally
     const compensationLine = campaign.position_type === "paid"
-      ? "In paragraph 3 or 4, work in naturally that you are looking for a paid research position. Do not make it sound like a demand or a condition."
+      ? "Work in naturally that you are looking for a paid research position. Do not make it sound like a demand or a condition."
       : "Do not mention compensation, pay, or whether the position is paid or unpaid at all.";
 
+    const cvLine = isPathA
+      ? 'After paragraph 4, on its own line, add exactly: "I have attached my CV for reference."'
+      : "Do not mention a CV or any attachment.";
+
     const userPrompt = `
-Write a cold email from the student below to Professor ${lastName} at ${profUniversity}.
+Write a cold email from a student to ${prof.name} at ${profUniversity}.
 
 STUDENT:
 ${studentContext}
 
 PROFESSOR:
 - Name: ${prof.name}
+- Title: ${profTitle || "(not provided)"}
 - University: ${profUniversity}
 - Research description: ${profResearch}
 - Research keywords: ${profKeywords}
 
 AVAILABILITY: ${campaign.availability ?? "flexible"}
 
-Write exactly four paragraphs. No greeting line before paragraph 1.
+SUBJECT: Write a specific subject line that names the professor's actual research area or a concrete topic from their description. Never use "Interest in Your Work," "Research Participation Interest," or other generic phrases.
 
-Paragraph 1 — One sentence. State the student's real first and last name, their year, their school, and their major. Example: "My name is Sarah Chen, and I am a junior at MIT studying electrical engineering and computer science."
+BODY STRUCTURE:
 
-Paragraph 2 — One to two sentences. Write something specific about what Professor ${lastName} actually researches, pulling from the research description and keywords above. Name something concrete about their work. Do not say "your work spans a wide range of directions." Do not mention their title, department, or the university name.
+Line 1 (salutation): ${salutation}
 
-Paragraph 3 — Two to three sentences. Choose the one or two things from the student's coursework, experience, or skills that connect most directly to this specific professor's research. Connect them explicitly. Do not list everything the student has done. Pull real details from the CV text if available. ${compensationLine}
+Paragraph 1 — One sentence. State who the student is: their first and last name, year, school, and major. Do not always open with "My name is" — vary the phrasing.
 
-Paragraph 4 — One to two sentences. A specific, soft ask tied to the professor's research area and the student's availability. Something like "I would love the opportunity to contribute to your work on [specific topic] this [availability period]" or "Would you be open to a brief conversation about your current projects?" Do not start with "I was wondering if."
+Paragraph 2 — One to two sentences. Pick one specific thread from ${lastName}'s research and name something concrete about it. Do not summarize everything they do. Do not mention their title, department, or university name.
 
-After paragraph 4, write exactly:
-Best,
-[student's real first and last name]
+Paragraph 3 — Two to three sentences. Choose the one or two things from the student's background that connect most directly to this professor's research. Write it as a short narrative, not a list. Do not name more than two courses by name. ${compensationLine}
 
-RULES:
+Paragraph 4 — One to two sentences. A single clean ask: either a brief conversation or an opportunity to contribute to their work on a specific topic during ${campaign.availability ?? "the coming semester"}. Do not start with "I was wondering if." Ask for one thing only.
+
+${cvLine}
+
+Sign-off: Vary the closing phrase across emails. Use one of: "Best,", "Best regards,", "Sincerely,", "Thank you," — followed by the student's first and last name on the next line.
+
+HARD RULES:
 - Never use em dashes anywhere in the email
-- Never mention hours per week
-- Never write "Dear Professor" or any salutation before paragraph 1
+- Never use the word "passionate"
+- Never list more than two courses by name
+- Never stack credentials with "and...and...and"
+- The closing paragraph must ask for exactly one thing
+- Never use overly deferential phrases like "I would welcome the opportunity to contribute" or "I would be grateful if you were open to" — the ask should be direct and confident, closer to "I would love to hear more about your current projects" or "I would be happy to chat if you think there could be a fit"
 - Never use bracketed placeholders in the final text
 - Never say anything self-deprecating about the student's experience level
 - Never start with "I hope this email finds you well" or any variation
+- Never mention hours per week
 - The email is ready to send as-is. No placeholders, no invented details.
 - Do not include a subject line in the body
 
@@ -157,8 +162,7 @@ The body is plain text. Use \\n for paragraph breaks. No markdown.
         parsed = JSON.parse(extracted);
       }
 
-      const { body } = parsed;
-      const subject = SUBJECT_LINES[Math.floor(Math.random() * SUBJECT_LINES.length)];
+      const { body, subject } = parsed;
 
       emailRows.push({
         user_id: user.id,

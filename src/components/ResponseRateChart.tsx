@@ -126,7 +126,7 @@ export function ResponseRateChart() {
       {/* Chart */}
       <div className="px-2 pt-5 pb-3" style={{ height: 490 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 4, right: 20, bottom: 0, left: 8 }}>
+          <AreaChart data={data} margin={{ top: 5, right: 30, bottom: 5, left: 20 }}>
             <defs>
               <linearGradient id="rrSentGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={SENT_COLOR} stopOpacity={0.14} />
@@ -145,10 +145,12 @@ export function ResponseRateChart() {
 
             <XAxis
               dataKey="campaign"
+              ticks={data.map((d) => d.campaign)}
               tick={{ fontSize: 10, fill: "rgba(187,210,221,0.6)" }}
               tickLine={false}
               axisLine={false}
               dy={8}
+              padding={{ left: 60, right: 60 }}
             />
 
             <YAxis hide />

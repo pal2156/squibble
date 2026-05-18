@@ -10,10 +10,11 @@ export async function POST(request: Request) {
   const { emailId } = await request.json();
   if (!emailId) return NextResponse.json({ error: "emailId required" }, { status: 400 });
 
-  // Load email + user's Gmail credentials
-  const [{ data: email }, { data: userData }] = await Promise.all([
+  // Load email, user's Gmail credentials, and profile (for CV attachment)
+  const [{ data: email }, { data: userData }, { data: profileData }] = await Promise.all([
     supabase.from("emails").select("*").eq("id", emailId).eq("user_id", user.id).single(),
     supabase.from("users").select("gmail_token, gmail_refresh_token, email, name").eq("id", user.id).single(),
+    supabase.from("profiles").select("cv_text, cv_filename").eq("user_id", user.id).single(),
   ]);
 
   if (!email) return NextResponse.json({ error: "Email not found" }, { status: 404 });
@@ -62,6 +63,11 @@ export async function POST(request: Request) {
   const fromEmail = userData.email ?? user.email ?? "";
   const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
+  // Attach CV PDF for Path A users (those who uploaded a CV)
+  const cvAttachment = (profileData?.cv_text && profileData?.cv_filename)
+    ? { base64: profileData.cv_text, filename: profileData.cv_filename, mimeType: "application/pdf" as const }
+    : undefined;
+
   try {
     const gmail = getGmailClient(userData.gmail_token, userData.gmail_refresh_token);
     const message = buildMimeMessage({
@@ -69,6 +75,7 @@ export async function POST(request: Request) {
       from,
       subject: email.subject ?? "(no subject)",
       body: email.body ?? "",
+      attachment: cvAttachment,
     });
 
     const sent = await gmail.users.messages.send({

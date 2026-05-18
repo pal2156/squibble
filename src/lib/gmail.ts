@@ -29,28 +29,63 @@ export function toBase64Url(input: string): string {
     .replace(/=+$/, "");
 }
 
-// Build a minimal RFC 2822 MIME message string
+// Build a minimal RFC 2822 MIME message string, with optional attachment
 export function buildMimeMessage({
   to,
   from,
   subject,
   body,
   threadId,
+  attachment,
 }: {
   to: string;
   from: string;
   subject: string;
   body: string;
   threadId?: string;
+  attachment?: { base64: string; filename: string; mimeType: string };
 }): { raw: string; threadId?: string } {
+  if (!attachment) {
+    const lines = [
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      "MIME-Version: 1.0",
+      "Content-Type: text/plain; charset=utf-8",
+      "",
+      body,
+    ];
+    return {
+      raw: toBase64Url(lines.join("\r\n")),
+      ...(threadId ? { threadId } : {}),
+    };
+  }
+
+  const boundary = `squibble_${Date.now()}`;
+  const bodyBase64 = Buffer.from(body).toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
+  const attachBase64 = attachment.base64.match(/.{1,76}/g)?.join("\r\n") ?? attachment.base64;
+
   const lines = [
     `From: ${from}`,
     `To: ${to}`,
     `Subject: ${subject}`,
     "MIME-Version: 1.0",
-    "Content-Type: text/plain; charset=utf-8",
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "",
-    body,
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=utf-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    bodyBase64,
+    "",
+    `--${boundary}`,
+    `Content-Type: ${attachment.mimeType}; name="${attachment.filename}"`,
+    "Content-Transfer-Encoding: base64",
+    `Content-Disposition: attachment; filename="${attachment.filename}"`,
+    "",
+    attachBase64,
+    "",
+    `--${boundary}--`,
   ];
   return {
     raw: toBase64Url(lines.join("\r\n")),
