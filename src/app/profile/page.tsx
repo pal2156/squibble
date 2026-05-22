@@ -295,7 +295,7 @@ function ProfileFields({
           value={form.anythingElse}
           onChange={(e) => set("anythingElse", e.target.value)}
           rows={3}
-          placeholder="A personal connection to the field, an unusual background, something you are proud of"
+          placeholder="An unusual background, something you're proud of, anything that doesn't fit above"
           className={inputClass + " leading-relaxed resize-y"}
           style={inputStyle}
           onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}
@@ -604,7 +604,7 @@ export default function ProfilePage() {
                     value={form.anythingElse}
                     onChange={(e) => set("anythingElse", e.target.value)}
                     rows={4}
-                    placeholder="A personal connection to the field, an unusual background, something you are proud of"
+                    placeholder="An unusual background, something you're proud of, anything that doesn't fit above"
                     className={inputClass + " leading-relaxed resize-y"}
                     style={inputStyle}
                     onFocus={(e) => (e.target.style.borderColor = "var(--border-strong)")}

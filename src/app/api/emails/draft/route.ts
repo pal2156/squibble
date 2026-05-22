@@ -1,6 +1,19 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, extractJsonString } from "@/lib/anthropic";
+import { anthropic } from "@/lib/anthropic";
+
+const SUBJECT_LINES = [
+  "Undergraduate Research Inquiry",
+  "Research Position Inquiry",
+  "Interest in Your Work",
+  "Seeking Research Experience",
+  "Research Collaboration Inquiry",
+  "Looking to Contribute",
+  "Research Participation Interest",
+  "Research Contribution Inquiry",
+  "Research Engagement Inquiry",
+  "Interest in Your Research",
+];
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -46,10 +59,21 @@ export async function POST(request: Request) {
       ]
         .filter(Boolean)
         .join("\n")
-    : "(no profile data — write a generic outreach email)";
+    : "(no profile data provided)";
 
-  // Path A: student uploaded a CV (cv_text stores base64 PDF); Path B: manual form entry
+  const campaignContext = [
+    campaign.research_interest ? `Research interest: ${campaign.research_interest}` : null,
+    campaign.subfield ? `Subfield: ${campaign.subfield}` : null,
+    campaign.university ? `Target university: ${campaign.university}` : null,
+    campaign.availability ? `Availability: ${campaign.availability}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  // Path A: student uploaded a CV; Path B: manual form entry
   const isPathA = !!(profile?.cv_text && profile?.cv_filename);
+
+  const subject = SUBJECT_LINES[Math.floor(Math.random() * SUBJECT_LINES.length)];
 
   const emailRows: Array<{
     user_id: string;
@@ -64,105 +88,77 @@ export async function POST(request: Request) {
   }> = [];
 
   for (const prof of professors) {
-    const lastName = prof.name.trim().split(/\s+/).pop() ?? prof.name;
     const profUniversity = prof.university ?? campaign.university ?? "";
     const profResearch = prof.description ?? "(no research description found)";
-    const profKeywords = Array.isArray(prof.research_areas) && prof.research_areas.length > 0
-      ? prof.research_areas.join(", ")
-      : "(none)";
     const profTitle = prof.title ?? "";
 
-    // Use "Dear Professor" only when the title explicitly contains the word Professor
-    const titleIncludesProfessor = /\bprofessor\b/i.test(profTitle);
-    const salutation = titleIncludesProfessor
-      ? `Dear Professor ${lastName},`
-      : `Dear Dr. ${lastName},`;
-
-    // Compensation: only mention if paid, and only naturally
-    const compensationLine = campaign.position_type === "paid"
-      ? "Work in naturally that you are looking for a paid research position. Do not make it sound like a demand or a condition."
+    const compensationInstruction = campaign.position_type === "paid"
+      ? "Work in naturally that the student is looking for a paid research position. Do not make it sound like a demand or a condition."
       : "Do not mention compensation, pay, or whether the position is paid or unpaid at all.";
 
-    const cvLine = isPathA
-      ? 'After paragraph 4, on its own line, add exactly: "I have attached my CV for reference."'
+    const cvInstruction = isPathA
+      ? "Near the end of the email, include a brief natural mention that the student has attached their CV for reference."
       : "Do not mention a CV or any attachment.";
 
-    const userPrompt = `
-Write a cold email from a student to ${prof.name} at ${profUniversity}.
+    const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. Use the example email as a reference for vibe, length, and density. Do not copy its structure sentence by sentence. Every email should feel natural and distinct.
 
-STUDENT:
+What to match from the example:
+
+- Short. The whole email is readable in under 30 seconds
+- Humble and direct. No performance, no showing off
+- Each paragraph is 1-3 sentences. Nothing longer
+- The professor-specific part is brief and genuine, not a literature review
+- The student's background comes up naturally, not as a list of credentials
+- The ask is soft and open, not transactional
+
+Rules:
+
+- Never use em dashes anywhere
+- Never use phrases like "sits at the intersection of," "rigorous mathematical reasoning," "robust," or anything that sounds like a LinkedIn bio
+- Never cite paper titles, grant names, or specific publication details. One brief reference to their research area is enough
+- Never list multiple credentials in the same breath. Pick the most relevant one and mention it like a person would
+- Do not start consecutive sentences with "I"
+- The email must sound like it was written by a real undergraduate, not assembled from a profile
+- ${compensationInstruction}
+- ${cvInstruction}
+
+The email should cover, in whatever natural order fits:
+
+- Who the student is
+- Why this professor's work caught their attention
+- What relevant experience or background the student has
+- When they are available and what they are looking for
+- A polite close
+
+Sign off with "Best regards," and the student's full name.
+Do not generate a subject line. Only write the body starting with "Dear Professor [last name]," or "Dear Dr. [last name]," depending on their title.
+Output plain text only. Use line breaks between paragraphs. No markdown, no JSON.`;
+
+    const userMessage = `Student profile:
 ${studentContext}
 
-PROFESSOR:
-- Name: ${prof.name}
-- Title: ${profTitle || "(not provided)"}
-- University: ${profUniversity}
-- Research description: ${profResearch}
-- Research keywords: ${profKeywords}
+Campaign context:
+${campaignContext}
 
-AVAILABILITY: ${campaign.availability ?? "flexible"}
-
-SUBJECT: Write a specific subject line that names the professor's actual research area or a concrete topic from their description. Never use "Interest in Your Work," "Research Participation Interest," or other generic phrases.
-
-BODY STRUCTURE:
-
-Line 1 (salutation): ${salutation}
-
-Paragraph 1 — One sentence. State who the student is: their first and last name, year, school, and major. Do not always open with "My name is" — vary the phrasing.
-
-Paragraph 2 — One to two sentences. Pick one specific thread from ${lastName}'s research and name something concrete about it. Do not summarize everything they do. Do not mention their title, department, or university name.
-
-Paragraph 3 — Two to three sentences. Choose the one or two things from the student's background that connect most directly to this professor's research. Write it as a short narrative, not a list. Do not name more than two courses by name. ${compensationLine}
-
-Paragraph 4 — One to two sentences. A single clean ask: either a brief conversation or an opportunity to contribute to their work on a specific topic during ${campaign.availability ?? "the coming semester"}. Do not start with "I was wondering if." Ask for one thing only.
-
-${cvLine}
-
-Sign-off: Vary the closing phrase across emails. Use one of: "Best,", "Best regards,", "Sincerely,", "Thank you," — followed by the student's first and last name on the next line.
-
-HARD RULES:
-- Never use em dashes anywhere in the email
-- Never use the word "passionate"
-- Never list more than two courses by name
-- Never stack credentials with "and...and...and"
-- The closing paragraph must ask for exactly one thing
-- Never use overly deferential phrases like "I would welcome the opportunity to contribute" or "I would be grateful if you were open to" — the ask should be direct and confident, closer to "I would love to hear more about your current projects" or "I would be happy to chat if you think there could be a fit"
-- Never use bracketed placeholders in the final text
-- Never say anything self-deprecating about the student's experience level
-- Never start with "I hope this email finds you well" or any variation
-- Never mention hours per week
-- The email is ready to send as-is. No placeholders, no invented details.
-- Do not include a subject line in the body
-
-Return ONLY a valid JSON object: {"subject": "...", "body": "..."}
-The body is plain text. Use \\n for paragraph breaks. No markdown.
-`.trim();
+Professor: ${prof.name}, ${prof.department ?? "(department unknown)"}, ${profUniversity}
+Title: ${profTitle || "(not provided)"}
+Research focus: ${profResearch}`;
 
     try {
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-6",
         max_tokens: 1024,
-        system:
-          "You write cold emails for students seeking research positions. Every sentence must use real data from the student profile or professor description. Never invent details. Never use placeholders. Never use em dashes. Return only the JSON object requested.",
-        messages: [{ role: "user", content: userPrompt }],
+        system: systemPrompt,
+        messages: [{ role: "user", content: userMessage }],
       });
 
-      const raw = response.content
+      const body = response.content
         .filter((b) => b.type === "text")
         .map((b) => (b as { type: "text"; text: string }).text)
         .join("")
         .trim();
-      const clean = raw.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-      let parsed: { subject: string; body: string };
-      try {
-        parsed = JSON.parse(clean);
-      } catch {
-        const extracted = extractJsonString(clean);
-        if (!extracted) throw new SyntaxError("No JSON in email draft response");
-        parsed = JSON.parse(extracted);
-      }
 
-      const { body, subject } = parsed;
+      if (!body) throw new Error("Empty response from Claude");
 
       emailRows.push({
         user_id: user.id,

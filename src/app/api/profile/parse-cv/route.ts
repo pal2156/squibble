@@ -54,8 +54,8 @@ Field instructions:
 - relevant_coursework: a comma-separated string of every course listed on the resume, do not skip any
 - research_experience: a full prose description of every research role, lab position, project, or academic work experience. Include lab names, what they worked on, tools used, and outcomes. Do not summarize or truncate.
 - skills: a comma-separated string of every technical and non-technical skill listed, including programming languages, tools, frameworks, lab techniques, and languages spoken
-- extracurriculars: a comma-separated string of clubs, sports, organizations, competitions, leadership roles, and awards
-- anything_else: anything remaining that does not fit the above fields, such as publications, personal projects, unusual background details, or anything a researcher would find interesting
+- extracurriculars: a comma-separated string of everything that is not academic coursework or research. This includes clubs, sports, organizations, competitions, hackathons, awards, honors, volunteer work, tutoring, coaching, mentoring, community involvement, leadership roles, part-time jobs, and any other non-academic non-research activity. Cast a wide net — if it does not belong in coursework, research_experience, or skills, it goes here.
+- anything_else: leave this empty. Do not put anything here.
 
 Be exhaustive. Do not truncate. Do not invent anything not on the resume. If a field has no data, return an empty string.`,
       messages: [{
@@ -83,6 +83,8 @@ Be exhaustive. Do not truncate. Do not invent anything not on the resume. If a f
       console.error("[parse-cv] JSON parse failed:", parseErr, "raw:", raw);
       return NextResponse.json({ error: "Failed to parse CV fields" }, { status: 500 });
     }
+    // Never auto-populate anything_else — the student fills it in manually
+    fields.anything_else = "";
     console.log("[parse-cv] parsed fields:", JSON.stringify(fields));
 
     // Save cv_text and cv_filename directly here so the client never has to send megabytes of base64

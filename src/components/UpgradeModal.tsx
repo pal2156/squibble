@@ -9,41 +9,48 @@ interface UpgradeModalProps {
 
 const PLANS = [
   {
-    name: "Mock Package 1",
-    price: "Mock Price 1",
+    name: "Free",
+    price: "$0",
+    priceSub: "No credit card required.",
+    subtitle: "Try it out.",
+    cta: "Get started free",
     features: [
-      "Up to 10 campaigns per month",
-      "50 researcher contacts",
-      "AI email drafts",
-      "Basic analytics dashboard",
-      "Email status tracking",
+      "3 professor searches",
+      "2 personalized emails",
+      "Reply tracking dashboard",
+      "Gmail integration",
     ],
     popular: false,
     idx: 1,
   },
   {
-    name: "Mock Package 2",
-    price: "Mock Price 2",
+    name: "Pro",
+    price: "$15",
+    priceSub: "One-time",
+    subtitle: "For your next research cycle.",
+    cta: "Get started",
     features: [
-      "Unlimited campaigns",
-      "200 researcher contacts",
-      "Advanced AI personalization",
-      "Full analytics & insights",
+      "30 professor searches",
+      "30 personalized emails",
+      "Reply tracking dashboard",
+      "Follow-up automation",
       "Gmail integration",
-      "Priority professor matching",
     ],
     popular: true,
     idx: 2,
   },
   {
-    name: "Mock Package 3",
-    price: "Mock Price 3",
+    name: "Max",
+    price: "$25",
+    priceSub: "One-time",
+    subtitle: "For high-volume outreach.",
+    cta: "Get started",
     features: [
-      "Everything in Package 2",
-      "Unlimited researcher contacts",
-      "Custom outreach templates",
-      "Dedicated account support",
-      "Team seats (up to 5)",
+      "75 professor searches",
+      "75 personalized emails",
+      "Reply tracking dashboard",
+      "Follow-up automation",
+      "Gmail integration",
     ],
     popular: false,
     idx: 3,
@@ -141,11 +148,19 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
               )}
 
               <h3
-                className="text-sm font-semibold mb-4"
-                style={{ color: "var(--ink)" }}
+                className="text-xs font-semibold uppercase tracking-widest mb-2"
+                style={{ color: "var(--accent)" }}
               >
                 {plan.name}
               </h3>
+
+              <div className="mb-0.5">
+                <span className="text-4xl font-semibold" style={{ color: "var(--ink)", letterSpacing: "-0.04em" }}>
+                  {plan.price}
+                </span>
+              </div>
+              <p className="text-xs mb-0.5" style={{ color: "var(--ink-secondary)" }}>{plan.priceSub}</p>
+              <p className="text-sm font-medium mb-4" style={{ color: "var(--ink)" }}>{plan.subtitle}</p>
 
               <ul className="space-y-2.5 mb-6 flex-1">
                 {plan.features.map((f) => (
@@ -172,7 +187,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
                   e.currentTarget.style.background = "var(--accent)";
                 }}
               >
-                {plan.price}
+                {plan.cta}
               </button>
             </div>
           ))}

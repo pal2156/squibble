@@ -611,15 +611,22 @@ function ArrowRight({ size = 14 }: { size?: number }) {
 const FREE_FEATURES = [
   "3 professor searches",
   "2 personalized emails",
-  "Basic reply tracking",
+  "Reply tracking dashboard",
   "Gmail integration",
 ];
 const PRO_FEATURES = [
-  "Unlimited professor searches",
-  "Unlimited personalized emails",
-  "Full reply tracking dashboard",
+  "30 professor searches",
+  "30 personalized emails",
+  "Reply tracking dashboard",
   "Follow-up automation",
-  "Priority email drafting",
+  "Gmail integration",
+];
+const MAX_FEATURES = [
+  "75 professor searches",
+  "75 personalized emails",
+  "Reply tracking dashboard",
+  "Follow-up automation",
+  "Gmail integration",
 ];
 
 // ─── Landing page ──────────────────────────────────────────────
@@ -723,29 +730,41 @@ export default function LandingPage() {
           </div>
           <div className="pricing-grid">
             <div className="price-card reveal">
-              <div className="price-name">Starter</div>
+              <div className="price-name">Free</div>
               <div className="price-amount">
                 <span className="num">$0</span>
-                <span className="per">forever</span>
               </div>
               <div className="price-sub">No credit card required.</div>
+              <p className="price-subtitle">Try it out.</p>
               <ul className="price-features">
                 {FREE_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
               <button className="price-cta" onClick={handleGoogleLogin}>Get started free</button>
             </div>
             <div className="price-card featured reveal">
-              <div className="price-tag">Most popular</div>
+              <div className="price-tag">Most Popular</div>
               <div className="price-name">Pro</div>
               <div className="price-amount">
-                <span className="num">$12</span>
-                <span className="per">/ month</span>
+                <span className="num">$15</span>
               </div>
-              <div className="price-sub">For serious applicants.</div>
+              <div className="price-sub">One-time</div>
+              <p className="price-subtitle">For your next research cycle.</p>
               <ul className="price-features">
                 {PRO_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
-              <button className="price-cta" onClick={handleGoogleLogin}>Upgrade to Pro</button>
+              <button className="price-cta" onClick={handleGoogleLogin}>Get started</button>
+            </div>
+            <div className="price-card reveal">
+              <div className="price-name">Max</div>
+              <div className="price-amount">
+                <span className="num">$25</span>
+              </div>
+              <div className="price-sub">One-time</div>
+              <p className="price-subtitle">For high-volume outreach.</p>
+              <ul className="price-features">
+                {MAX_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
+              </ul>
+              <button className="price-cta" onClick={handleGoogleLogin}>Get started</button>
             </div>
           </div>
         </div>

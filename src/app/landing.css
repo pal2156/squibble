@@ -588,12 +588,12 @@
 /* ─── Pricing ─────────────────────────────────────────────────── */
 .pricing-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 24px;
-  max-width: 860px;
+  max-width: 1060px;
   margin: 0 auto;
 }
-@media (max-width: 760px) { .pricing-grid { grid-template-columns: 1fr; } }
+@media (max-width: 900px) { .pricing-grid { grid-template-columns: 1fr; } }
 
 .price-card {
   background: var(--white);
@@ -641,7 +641,13 @@
 .price-sub {
   color: var(--slate);
   font-size: 14.5px;
-  margin-bottom: 28px;
+  margin-bottom: 6px;
+}
+.price-subtitle {
+  color: var(--jet);
+  font-size: 14.5px;
+  font-weight: 500;
+  margin-bottom: 24px;
 }
 .price-features {
   list-style: none; padding: 0; margin: 0 0 32px;
