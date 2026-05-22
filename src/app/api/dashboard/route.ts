@@ -12,7 +12,7 @@ export async function GET() {
     .select(`
       id, professor_name, university, department,
       subject, body, status, sent_at, campaign_id,
-      campaigns ( title ),
+      campaigns ( title, created_at ),
       replies ( body, received_at, classification )
     `)
     .eq("user_id", user.id)
@@ -25,8 +25,9 @@ export async function GET() {
         : e.status === "negative" ? "Negative Reply"
         : "No Response";
 
-    const campaignTitle =
-      (e.campaigns as { title?: string } | null)?.title ?? "Campaign";
+    const campaignRow = e.campaigns as { title?: string; created_at?: string } | null;
+    const campaignTitle = campaignRow?.title ?? "Campaign";
+    const campaignCreatedAt = campaignRow?.created_at ?? "";
 
     const reply =
       e.replies && (e.replies as Array<{ body: string; received_at: string }>).length > 0
@@ -42,6 +43,7 @@ export async function GET() {
       university: e.university ?? "",
       department: e.department ?? "",
       campaign: campaignTitle,
+      campaignCreatedAt,
       dateSent: e.sent_at ? formatDate(e.sent_at) : "",
       status: uiStatus as "Positive Reply" | "No Response" | "Negative Reply",
       subject: e.subject ?? "",

@@ -138,6 +138,43 @@ function CampaignTooltip({
   );
 }
 
+function splitLabel(text: string): string[] {
+  if (text.length <= 20) return [text];
+  const mid = Math.floor(text.length / 2);
+  let before = mid;
+  let after = mid;
+  while (before > 0 && text[before] !== " ") before--;
+  while (after < text.length && text[after] !== " ") after++;
+  const splitAt = (mid - before) <= (after - mid) ? before : after;
+  if (splitAt <= 0 || splitAt >= text.length) {
+    return [text.slice(0, mid), text.slice(mid)];
+  }
+  return [text.slice(0, splitAt).trim(), text.slice(splitAt).trim()];
+}
+
+function CampaignTick({
+  x = 0,
+  y = 0,
+  payload,
+}: {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+}) {
+  const parts = splitLabel(payload?.value ?? "");
+  return (
+    <g transform={`translate(${x},${y + 6})`}>
+      <text textAnchor="middle" fontSize={9} fill="#3C5352">
+        {parts.map((part, i) => (
+          <tspan key={i} x={0} dy={i === 0 ? "0" : "1.2em"}>
+            {part}
+          </tspan>
+        ))}
+      </text>
+    </g>
+  );
+}
+
 function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
   const [range, setRange] = useState<TimeRange>("All Campaigns");
 
@@ -157,24 +194,30 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
 
     const filtered = emails.filter((e) => parseMs(e.dateSent) >= cutoffMs);
 
-    const campaignOrder: string[] = [];
-    const campaignMap = new Map<string, { sent: number; responses: number }>();
+    type CampaignMeta = { sent: number; responses: number; firstDateMs: number; createdAtMs: number };
+    const campaignMap = new Map<string, CampaignMeta>();
 
-    [...filtered]
-      .sort((a, b) => parseMs(a.dateSent) - parseMs(b.dateSent))
-      .forEach((e) => {
-        if (!campaignMap.has(e.campaign)) {
-          campaignOrder.push(e.campaign);
-          campaignMap.set(e.campaign, { sent: 0, responses: 0 });
-        }
-        const c = campaignMap.get(e.campaign)!;
-        c.sent++;
-        if (e.status !== "No Response") c.responses++;
-      });
+    filtered.forEach((e) => {
+      const dateMs = parseMs(e.dateSent);
+      const createdMs = e.campaignCreatedAt ? new Date(e.campaignCreatedAt).getTime() : 0;
+      if (!campaignMap.has(e.campaign)) {
+        campaignMap.set(e.campaign, { sent: 0, responses: 0, firstDateMs: dateMs, createdAtMs: createdMs });
+      }
+      const meta = campaignMap.get(e.campaign)!;
+      if (dateMs < meta.firstDateMs) meta.firstDateMs = dateMs;
+      meta.sent++;
+      if (e.status !== "No Response") meta.responses++;
+    });
+
+    const campaignOrder = [...campaignMap.keys()].sort((a, b) => {
+      const ma = campaignMap.get(a)!;
+      const mb = campaignMap.get(b)!;
+      if (ma.firstDateMs !== mb.firstDateMs) return ma.firstDateMs - mb.firstDateMs;
+      return ma.createdAtMs - mb.createdAtMs;
+    });
 
     return campaignOrder.map((campaign) => {
       const { sent, responses } = campaignMap.get(campaign)!;
-      // Shorten: "Princeton Physics — Mar '25" → "Princeton Physics"
       const name = campaign.split(" - ")[0];
       return { campaign: name, sent, responses };
     });
@@ -235,7 +278,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
     >
       <div className="px-2 pt-4 pb-2" style={{ height: 178 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 12, bottom: 40, left: 0 }}>
             <defs>
               <linearGradient id="crSentGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={SENT_COLOR} stopOpacity={0.14} />
@@ -249,10 +292,10 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
             <CartesianGrid vertical={false} stroke="rgba(187,210,221,0.6)" />
             <XAxis
               dataKey="campaign"
-              tick={{ fontSize: 9, fill: "#3C5352" }}
+              ticks={chartData.map((d) => d.campaign)}
+              tick={(props) => <CampaignTick {...props} />}
               tickLine={false}
               axisLine={false}
-              dy={6}
             />
             <YAxis hide />
             <Tooltip

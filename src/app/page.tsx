@@ -527,6 +527,7 @@ function useReveal() {
 }
 
 // ─── Social proof ──────────────────────────────────────────────
+/* MARQUEE DATA + COMPONENTS — commented out, restore to re-enable scrolling tickers
 const UNIS = [
   { name: "Columbia",      logo: "/landing/logos/columbia.png" },
   { name: "Yale",          logo: "/landing/logos/yale.png" },
@@ -576,6 +577,7 @@ function Ticker({ items, reverse }: { items: string[]; reverse: boolean }) {
     </div>
   );
 }
+*/
 
 // ─── Proof card ────────────────────────────────────────────────
 function ProofCard() {
@@ -684,9 +686,19 @@ export default function LandingPage() {
       <section className="social" data-screen-label="03 Social proof">
         <div className="container">
           <div className="social-label">Research opportunities landed at</div>
+          {/* MARQUEE TICKERS — commented out, restore with LogoTicker/Ticker components above
           <LogoTicker items={UNIS} reverse={false} />
           <div style={{ height: 20 }} />
           <Ticker items={FIELDS} reverse={true} />
+          */}
+          <div style={{ display: "flex", alignItems: "center", gap: 20, justifyContent: "center", padding: "24px 0" }}>
+            <span className="ticker-logo">
+              <img src="/landing/logos/columbia.png" alt="Columbia" />
+            </span>
+            <span className="ticker-item" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              Condensed Matter Physics
+            </span>
+          </div>
         </div>
       </section>
 

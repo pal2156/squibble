@@ -95,6 +95,7 @@ export interface SentEmail {
   university: string;
   department: string;
   campaign: string;
+  campaignCreatedAt?: string;
   dateSent: string;
   status: "Positive Reply" | "No Response" | "Negative Reply";
   subject: string;

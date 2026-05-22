@@ -51,6 +51,15 @@ async function robustJson<T>(rawText: string, fallbackInstruction: string): Prom
   }
 }
 
+// A description passes if it has at least 2 sentences with real content (not just a title or dept line)
+function isSubstantiveDescription(description: string | null): boolean {
+  if (!description) return false;
+  const text = description.trim();
+  if (text.length < 80) return false;
+  const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+  return sentences.filter((s) => s.length > 40).length >= 2;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -113,6 +122,11 @@ export async function POST(request: Request) {
         if (!faculty_page_url) throw new Error("Could not find faculty directory URL.");
 
         // ── Step 2: Haiku extracts professor list from the faculty page ────────
+        // Extract a pool ~2x larger than needed so Bug-1 substitution has candidates to draw from
+        const targetCount = campaign.professor_count ?? 5;
+        const poolSize = Math.min(targetCount * 2, 20);
+        console.log(`[EXTRACT] target=${targetCount} professors, pool size=${poolSize}`);
+
         controller.enqueue(sse({ type: "progress", message: "Reading through the faculty..." }));
 
         const step2Res = await anthropic.messages.create({
@@ -125,7 +139,7 @@ export async function POST(request: Request) {
               role: "user",
               content: `Visit this faculty directory page: ${faculty_page_url}
 
-Extract up to ${campaign.professor_count ?? 10} professors. Return ONLY a JSON array where each object has exactly these five fields:
+Extract up to ${poolSize} professors. Return ONLY a JSON array where each object has exactly these five fields:
 - name (string)
 - email (string or null)
 - title (academic rank, e.g. "Assistant Professor", or null)
@@ -153,10 +167,13 @@ Extract up to ${campaign.professor_count ?? 10} professors. Return ONLY a JSON a
           throw new Error("Could not extract any professors from the faculty directory.");
         }
 
-        // ── Step 3: Haiku reads each professor's faculty/lab page for research ──
-        // Searches "[name] [university] research" and reads their profile page.
-        // Extracts a 2-3 sentence research_description (focus + active project)
-        // and up to 5 keyword topics. Runs for all professors.
+        // ── Step 3: Haiku reads each professor's profile/lab page for research ──
+        // For each candidate:
+        //   1. Searches "[name] [university] research" and reads the top result (base).
+        //   2. Looks for a lab page or Google Scholar link on that page and follows it if found.
+        //   3. Writes a description focused on current/recent work, not a static bio.
+        // After extraction, professors with thin descriptions are discarded (Bug 1 fix).
+        // Substitution is handled by the larger pool extracted in Step 2.
         controller.enqueue(sse({ type: "progress", message: "Reading professor profiles..." }));
 
         type EnrichedProfessor = RawProfessor & {
@@ -165,72 +182,90 @@ Extract up to ${campaign.professor_count ?? 10} professors. Return ONLY a JSON a
           research_areas: string[];
         };
 
-        let enrichedProfessors: EnrichedProfessor[] = rawProfessors.map((p) => ({
+        const baseEnriched: EnrichedProfessor[] = rawProfessors.map((p) => ({
           ...p,
           university: campaign.university,
           description: null,
           research_areas: [],
         }));
 
-        const profsToEnrich = rawProfessors.slice(0, 10);
+        console.log(`[EXTRACT] Enriching ${rawProfessors.length} candidates in parallel...`);
 
-        if (profsToEnrich.length > 0) {
-          const profileResults = await Promise.allSettled(
-            profsToEnrich.map(async (p) => {
-              const profileHint = p.profile_url
-                ? `\nHint: their profile page is at ${p.profile_url}`
-                : "";
-              const res = await anthropic.messages.create({
-                model: HAIKU,
-                max_tokens: 1024,
-                tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
-                system:
-                  "You find professor research information by reading their faculty profile page or lab page. Do not read papers or abstracts. Return ONLY a valid JSON object with no markdown fences, no prose, no explanation.",
-                messages: [
-                  {
-                    role: "user",
-                    content: `Search for "${p.name} ${campaign.university} research" and read their faculty profile page or lab page from the top result.${profileHint}
+        const profileResults = await Promise.allSettled(
+          rawProfessors.map(async (p) => {
+            const profileHint = p.profile_url
+              ? `\nHint: their faculty profile is at ${p.profile_url}`
+              : "";
+            console.log(`[EXTRACT] Fetching research for ${p.name}...`);
+            const res = await anthropic.messages.create({
+              model: HAIKU,
+              max_tokens: 1024,
+              tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
+              system:
+                "You research what a professor is currently working on by reading their faculty page and, when available, following links to their lab or Google Scholar page. Return ONLY a valid JSON object with no markdown fences, no prose, no explanation.",
+              messages: [
+                {
+                  role: "user",
+                  content: `Research what this professor is currently working on. Follow these three steps in order:
 
-Extract:
-1. A one-sentence summary of their current research focus
-2. One specific active project, initiative, or topic they are currently working on (if mentioned on the page)
+Step 1 — Base search: Search for "${p.name} ${campaign.university} research" and read the top result (usually their faculty bio page).${profileHint}
 
-Combine 1 and 2 into a single research_description that is 2-3 sentences max. Also extract up to 5 keyword topics describing their work.
+Step 2 — Better sources: While reading that page, look for any of these links:
+- A link to the professor's lab or research group website
+- A link to their personal research page
+- A Google Scholar profile link
+If you find one, follow it and read that page too — it is more likely to reflect current work. Prefer a lab page over Google Scholar. Set source_type in your response to "lab_page" if you followed a lab or research page, "google_scholar" if you used Google Scholar, or "profile_page_only" if you stayed on the bio page.
+
+Step 3 — Write the description: Write a research_description of 2-3 sentences max describing what this professor is working on NOW. Prioritize anything that mentions specific ongoing projects, recent grants, current collaborations, or recent dates. Do not just restate their title, department, or a generic overview of their field.
+
+Extract up to 5 keyword topics describing their research.
 
 Return ONLY this JSON:
-{"name": "${p.name}", "description": "<2-3 sentence research_description combining focus and active project>", "research_areas": ["<keyword1>", "<keyword2>", "<keyword3>", "<keyword4>", "<keyword5>"]}
+{"name": "${p.name}", "description": "<2-3 sentence research_description focused on current work>", "research_areas": ["<kw1>", "<kw2>", "<kw3>", "<kw4>", "<kw5>"], "source_type": "<lab_page|google_scholar|profile_page_only>"}
 
-If no research information is found on their page, return:
-{"name": "${p.name}", "description": null, "research_areas": []}`,
-                  },
-                ],
-              });
-              const raw = extractText(res.content);
-              if (!raw) throw new Error(`No text response for ${p.name}`);
-              return robustJson<{ name: string; description: string | null; research_areas: string[] }>(
-                raw,
-                `Extract research info for professor ${p.name} and return: {"name": "${p.name}", "description": "...", "research_areas": [...]}`
-              );
-            })
-          );
+If no research information is found, return:
+{"name": "${p.name}", "description": null, "research_areas": [], "source_type": "profile_page_only"}`,
+                },
+              ],
+            });
+            const raw = extractText(res.content);
+            if (!raw) throw new Error(`No text response for ${p.name}`);
+            return robustJson<{ name: string; description: string | null; research_areas: string[]; source_type?: string }>(
+              raw,
+              `Extract research info for professor ${p.name} and return: {"name": "${p.name}", "description": "...", "research_areas": [...], "source_type": "..."}`
+            );
+          })
+        );
 
-          const profileMap = new Map<string, { description: string | null; research_areas: string[] }>();
-          profileResults.forEach((result, i) => {
-            if (result.status === "fulfilled") {
-              profileMap.set(profsToEnrich[i].name, {
-                description: result.value.description,
-                research_areas: result.value.research_areas ?? [],
+        // Log source type and apply quality filter; discard thin descriptions (Bug 1)
+        const enrichedPool: EnrichedProfessor[] = [];
+        profileResults.forEach((result, i) => {
+          const prof = rawProfessors[i];
+          if (result.status === "fulfilled") {
+            const { description, research_areas, source_type } = result.value;
+            if (source_type === "lab_page") {
+              console.log(`[SOURCE] ${prof.name} -- lab page`);
+            } else if (source_type === "google_scholar") {
+              console.log(`[SOURCE] ${prof.name} -- Google Scholar`);
+            } else {
+              console.log(`[SOURCE] ${prof.name} -- profile page only`);
+            }
+            if (isSubstantiveDescription(description)) {
+              enrichedPool.push({
+                ...baseEnriched[i],
+                description: description,
+                research_areas: research_areas ?? [],
               });
             } else {
-              console.error(`Profile fetch failed for ${profsToEnrich[i].name}:`, result.reason);
+              console.log(`[DISCARDED] ${prof.name} -- insufficient research content`);
             }
-          });
+          } else {
+            console.error(`[ERROR] Profile fetch failed for ${prof.name}:`, result.reason);
+          }
+        });
 
-          enrichedProfessors = enrichedProfessors.map((p) => {
-            const match = profileMap.get(p.name);
-            return match ? { ...p, description: match.description, research_areas: match.research_areas } : p;
-          });
-        }
+        console.log(`[EXTRACT] ${enrichedPool.length}/${rawProfessors.length} passed quality check (target: ${targetCount})`);
+        const enrichedProfessors = enrichedPool.slice(0, targetCount);
 
         // ── Step 4: Sonnet ranks all professors by fit ─────────────────────────
         controller.enqueue(sse({ type: "progress", message: "Matching professors to your profile..." }));
