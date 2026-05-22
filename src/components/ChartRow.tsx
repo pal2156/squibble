@@ -293,7 +293,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
             <XAxis
               dataKey="campaign"
               ticks={chartData.map((d) => d.campaign)}
-              tick={(props) => <CampaignTick {...props} />}
+              tick={(props) => <CampaignTick {...props} x={props.x as number | undefined} y={props.y as number | undefined} />}
               tickLine={false}
               axisLine={false}
             />
