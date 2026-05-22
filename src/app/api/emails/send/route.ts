@@ -63,6 +63,12 @@ export async function POST(request: Request) {
   const fromEmail = userData.email ?? user.email ?? "";
   const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
+  const testOverride = process.env.TEST_EMAIL_OVERRIDE;
+  const recipient = testOverride ?? toEmail;
+  const body = testOverride
+    ? `${email.body ?? ""}\n\nThis is a test email going to ${testOverride}.`
+    : (email.body ?? "");
+
   // Attach CV PDF for Path A users (those who uploaded a CV)
   const cvAttachment = (profileData?.cv_text && profileData?.cv_filename)
     ? { base64: profileData.cv_text, filename: profileData.cv_filename, mimeType: "application/pdf" as const }
@@ -71,10 +77,10 @@ export async function POST(request: Request) {
   try {
     const gmail = getGmailClient(userData.gmail_token, userData.gmail_refresh_token);
     const message = buildMimeMessage({
-      to: toEmail,
+      to: recipient,
       from,
       subject: email.subject ?? "(no subject)",
-      body: email.body ?? "",
+      body,
       attachment: cvAttachment,
     });
 

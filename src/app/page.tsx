@@ -10,7 +10,7 @@ async function handleGoogleLogin() {
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      scopes: "email profile https://www.googleapis.com/auth/gmail.send",
+      scopes: "email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
       redirectTo: `${window.location.origin}/auth/callback`,
       queryParams: {
         access_type: "offline",
