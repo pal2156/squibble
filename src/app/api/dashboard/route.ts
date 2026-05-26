@@ -29,13 +29,12 @@ export async function GET() {
     const campaignTitle = campaignRow?.title ?? "Campaign";
     const campaignCreatedAt = campaignRow?.created_at ?? "";
 
-    const reply =
-      e.replies && (e.replies as Array<{ body: string; received_at: string }>).length > 0
-        ? {
-            date: formatDate((e.replies as Array<{ body: string; received_at: string }>)[0].received_at),
-            body: (e.replies as Array<{ body: string; received_at: string }>)[0].body,
-          }
-        : undefined;
+    // replies is returned as a plain object (not array) because email_id has a UNIQUE constraint.
+    type ReplyObj = { body: string; received_at: string; classification?: string };
+    const replyObj = e.replies as unknown as ReplyObj | null;
+    const reply = replyObj
+      ? { date: formatDate(replyObj.received_at), body: replyObj.body }
+      : undefined;
 
     return {
       id: e.id,

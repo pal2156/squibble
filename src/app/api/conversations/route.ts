@@ -18,13 +18,13 @@ export async function GET() {
     .in("status", ["positive", "negative"])
     .order("sent_at", { ascending: false });
 
+  // replies is returned as a plain object (not array) because email_id has a UNIQUE constraint.
+  type ReplyObj = { body: string; received_at: string; classification?: string };
+
   const rows = (emails ?? [])
-    .filter((e) =>
-      e.replies &&
-      (e.replies as Array<{ body: string; received_at: string }>).length > 0
-    )
+    .filter((e) => e.replies != null)
     .map((e) => {
-      const replyRow = (e.replies as Array<{ body: string; received_at: string }>)[0];
+      const replyRow = e.replies as unknown as ReplyObj;
       const uiStatus =
         e.status === "positive" ? "Positive Reply" : "Negative Reply";
 

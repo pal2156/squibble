@@ -1,5 +1,7 @@
 "use client";
 
+const DEV_OVERRIDE_RECIPIENT = true;
+
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Pencil, SkipForward, Send, Building2, ArrowLeft } from "lucide-react";
@@ -17,6 +19,7 @@ function ApprovalContent() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [states, setStates] = useState<Record<string, EmailState>>({});
   const [bodies, setBodies] = useState<Record<string, string>>({});
+  const [recipients, setRecipients] = useState<Record<string, string>>({});
   const [current, setCurrent] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
@@ -48,6 +51,9 @@ function ApprovalContent() {
         setEmails(emailList);
         setStates(Object.fromEntries(emailList.map((e) => [e.id, "pending" as EmailState])));
         setBodies(Object.fromEntries(emailList.map((e) => [e.id, e.body ?? ""])));
+        if (DEV_OVERRIDE_RECIPIENT) {
+          setRecipients(Object.fromEntries(emailList.map((e) => [e.id, e.email ?? ""])));
+        }
       } catch (err) {
         setDraftError(err instanceof Error ? err.message : "Failed to load drafts");
       } finally {
@@ -86,7 +92,6 @@ function ApprovalContent() {
           ))}
         </div>
         <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>Drafting your emails…</p>
-        <p className="text-xs" style={{ color: "var(--ink-muted)" }}>This takes about 10-30 seconds.</p>
         <style>{`@keyframes pulse-dot { 0%, 100% { opacity: 0.2; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
       </div>
     );
@@ -144,11 +149,32 @@ function ApprovalContent() {
     const isLast = current >= emails.length - 1;
     setSendingId(email.id);
 
-    fetch("/api/emails/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ emailId: email.id }),
-    }).catch(() => {});
+    try {
+      const res = await fetch("/api/emails/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailId: email.id,
+          ...(DEV_OVERRIDE_RECIPIENT ? { overrideRecipient: recipients[email.id] } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("[approve] send failed:", res.status, data);
+        setSendingId(null);
+        return;
+      }
+      if (!data.ok) {
+        console.error("[approve] send returned not-ok:", data);
+        setSendingId(null);
+        return;
+      }
+      console.log("[approve] send succeeded:", data);
+    } catch (err) {
+      console.error("[approve] network error during send:", err);
+      setSendingId(null);
+      return;
+    }
 
     setStates((prev) => ({ ...prev, [email.id]: "approved" }));
     setExitDir("left");
@@ -188,17 +214,23 @@ function ApprovalContent() {
 
   const handleApproveAll = async () => {
     const pending = emails.filter((e) => states[e.id] === "pending");
-    setStates((prev) => {
-      const next = { ...prev };
-      pending.forEach((e) => { next[e.id] = "approved"; });
-      return next;
-    });
     for (const e of pending) {
-      await fetch("/api/emails/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ emailId: e.id }),
-      }).catch(() => {});
+      try {
+        const res = await fetch("/api/emails/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emailId: e.id }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          console.error("[approveAll] send failed for", e.id, res.status, data);
+        } else {
+          console.log("[approveAll] sent", e.id, data);
+          setStates((prev) => ({ ...prev, [e.id]: "approved" }));
+        }
+      } catch (err) {
+        console.error("[approveAll] network error for", e.id, err);
+      }
     }
     setShowDone(true);
   };
@@ -360,6 +392,21 @@ function ApprovalContent() {
             {email.subject}
           </p>
         </div>
+
+        {/* Dev: override recipient */}
+        {DEV_OVERRIDE_RECIPIENT && (
+          <div className="px-6 py-3 border-b flex items-center gap-3" style={{ borderColor: "var(--border-subtle)" }}>
+            <span className="text-[11px] font-semibold uppercase tracking-widest shrink-0 w-14" style={{ color: "var(--ink-muted)" }}>To</span>
+            <input
+              type="email"
+              value={recipients[email.id] ?? ""}
+              onChange={(e) => setRecipients((prev) => ({ ...prev, [email.id]: e.target.value }))}
+              className="flex-1 text-xs bg-transparent border-none outline-none"
+              style={{ color: "var(--ink-secondary)", fontFamily: "inherit" }}
+              placeholder="recipient@example.com"
+            />
+          </div>
+        )}
 
         {/* Body */}
         <div className="px-6 py-5">

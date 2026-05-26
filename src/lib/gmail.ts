@@ -1,8 +1,11 @@
 import { google } from "googleapis";
 
-// Required env vars (add to .env.local):
-//   GOOGLE_CLIENT_ID     — same client ID used in Supabase Google OAuth provider
-//   GOOGLE_CLIENT_SECRET — same client secret used in Supabase Google OAuth provider
+if (!process.env.GOOGLE_CLIENT_ID) {
+  console.warn("[gmail] WARNING: GOOGLE_CLIENT_ID is undefined — Gmail API and OAuth token refresh will fail.");
+}
+if (!process.env.GOOGLE_CLIENT_SECRET) {
+  console.warn("[gmail] WARNING: GOOGLE_CLIENT_SECRET is undefined — Gmail API and OAuth token refresh will fail.");
+}
 
 function makeOAuth2Client(accessToken: string, refreshToken?: string | null) {
   const client = new google.auth.OAuth2(

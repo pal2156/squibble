@@ -58,6 +58,7 @@ export interface Email {
   professor_name: string | null;
   university: string | null;
   department: string | null;
+  email: string | null;
   subject: string | null;
   body: string | null;
   status: EmailStatus;

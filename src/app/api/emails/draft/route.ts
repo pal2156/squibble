@@ -82,6 +82,7 @@ export async function POST(request: Request) {
     professor_name: string;
     university: string | null;
     department: string | null;
+    email: string | null;
     subject: string;
     body: string;
     status: string;
@@ -100,35 +101,30 @@ export async function POST(request: Request) {
       ? "Near the end of the email, include a brief natural mention that the student has attached their CV for reference."
       : "Do not mention a CV or any attachment.";
 
-    const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. Use the example email as a reference for vibe, length, and density. Do not copy its structure sentence by sentence. Every email should feel natural and distinct.
+    const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. The email must be under 200 words and consist of exactly four short paragraphs.
 
-What to match from the example:
+Paragraph structure:
 
-- Short. The whole email is readable in under 30 seconds
-- Humble and direct. No performance, no showing off
-- Each paragraph is 1-3 sentences. Nothing longer
-- The professor-specific part is brief and genuine, not a literature review
-- The student's background comes up naturally, not as a list of credentials
-- The ask is soft and open, not transactional
+1. Who the student is and what they are asking for. Two sentences max. State name, year, school, and the ask directly.
+2. The connection to the professor's research. Frame this as the student noticing a link between something they have already been thinking about or working on and the professor's work. The framing is "I have been thinking about X, and your work on Y connects to that" not "your work impressed me" or "I came across your research." Two to three sentences.
+3. What the student brings. One or two relevant pieces of background, mentioned plainly. Two to three sentences.
+4. Availability and the ask. Soft and open, not transactional. Two to three sentences.
 
 Rules:
 
-- Never use em dashes anywhere
-- Never use phrases like "sits at the intersection of," "rigorous mathematical reasoning," "robust," or anything that sounds like a LinkedIn bio
-- Never cite paper titles, grant names, or specific publication details. One brief reference to their research area is enough
-- Never list multiple credentials in the same breath. Pick the most relevant one and mention it like a person would
+- Total length: under 200 words
+- Every paragraph: 2-3 sentences max, no exceptions
+- Never use em dashes anywhere in the email
+- Never use phrases like "your work caught my attention," "your research stood out," "genuinely caught my attention," "most research I have encountered," "impressed by your work," or any variation that frames the professor's research as exceptional among everything the student has read
+- Never write "thank you for your time" or any close variant before the sign-off
+- Never use phrases like "sits at the intersection of," "rigorous," "robust," "synergy," or anything that sounds like a LinkedIn bio
+- Never cite paper titles, grant names, or specific publication details. One brief reference to the research area is enough
+- Never list multiple credentials in the same sentence. Pick the most relevant one and mention it plainly
 - Do not start consecutive sentences with "I"
 - The email must sound like it was written by a real undergraduate, not assembled from a profile
+- No flattery, no performed enthusiasm, no overselling
 - ${compensationInstruction}
 - ${cvInstruction}
-
-The email should cover, in whatever natural order fits:
-
-- Who the student is
-- Why this professor's work caught their attention
-- What relevant experience or background the student has
-- When they are available and what they are looking for
-- A polite close
 
 Sign off with "Best regards," and the student's full name.
 Do not generate a subject line. Only write the body starting with "Dear Professor [last name]," or "Dear Dr. [last name]," depending on their title.
@@ -167,6 +163,7 @@ Research focus: ${profResearch}`;
         professor_name: prof.name,
         university: profUniversity || null,
         department: prof.department,
+        email: prof.email ?? null,
         subject,
         body,
         status: "draft",

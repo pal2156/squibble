@@ -3,8 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { getGmailClient } from "@/lib/gmail";
 import { anthropic } from "@/lib/anthropic";
 
-// One-off admin route: backfill a missed professor reply by threadId.
-// Call as: GET /api/admin/backfill-reply?threadId=XXX&user_id=YYY&secret=CRON_SECRET
+// One-off admin route: backfill a missed professor reply by thread_id.
+// Call as: GET /api/admin/backfill-reply?thread_id=XXX&user_id=YYY&secret=CRON_SECRET
 
 function getServiceClient() {
   return createClient(
@@ -38,11 +38,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const threadId = searchParams.get("threadId");
+  const threadId = searchParams.get("thread_id");
   const userId = searchParams.get("user_id");
 
   if (!threadId || !userId) {
-    return NextResponse.json({ error: "threadId and user_id are required" }, { status: 400 });
+    return NextResponse.json({ error: "thread_id and user_id are required" }, { status: 400 });
   }
 
   const admin = getServiceClient();

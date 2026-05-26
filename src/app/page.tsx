@@ -2,16 +2,21 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { CodeRedirectHandler } from "@/components/CodeRedirectHandler";
 import "./landing.css";
 
 // ─── Google OAuth ──────────────────────────────────────────────
 async function handleGoogleLogin() {
   const supabase = createClient();
+  // Use the canonical app URL from env so www vs non-www never causes a mismatch
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+  const redirectTo = `${appUrl}/auth/callback`;
+  console.log("[OAuth] initiating Google sign-in, redirectTo:", redirectTo);
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       scopes: "email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo,
       queryParams: {
         access_type: "offline",
         prompt: "consent",
@@ -635,6 +640,7 @@ export default function LandingPage() {
 
   return (
     <div className="lp-page">
+      <CodeRedirectHandler />
       <Nav />
 
       {/* HERO */}
