@@ -38,48 +38,27 @@ export async function POST(request: Request) {
     console.error("[send] gmail_token is null/missing for user:", user.id, "— user must re-authenticate");
     return NextResponse.json({ error: "Gmail not connected. Please sign in again." }, { status: 403 });
   }
-  if (!email.email) {
-    console.log("[send] no email address on email row, looking up from professors table");
-    // Load professor email from professors table
+  // The email row no longer stores the professor email address, so we always
+  // resolve it from the professors table. A missing address is a real error,
+  // not a silent success — the email must not be marked sent unless Gmail
+  // actually accepts it.
+  const cachedEmail = (email as Record<string, unknown>).email as string | null | undefined;
+  let toEmail: string | undefined = cachedEmail || undefined;
+
+  if (!toEmail) {
+    console.log("[send] looking up professor email from professors table");
     const { data: prof } = await supabase
       .from("professors")
       .select("email")
       .eq("id", email.professor_id)
       .single();
-
-    console.log("[send] professor lookup result:", prof?.email ?? "(no email found)");
-
-    if (!prof?.email) {
-      console.warn("[send] professor has no email address — marking sent without sending");
-      // Mark as sent anyway (no email address available)
-      await supabase
-        .from("emails")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
-        .eq("id", emailId);
-      return NextResponse.json({ ok: true, warning: "No email address for professor" });
-    }
-
-    // Attach professor email to email row for sending
-    await supabase.from("emails").update({ email: prof.email } as Record<string, unknown>).eq("id", emailId);
-    Object.assign(email, { email: prof.email });
-  }
-
-  // Load professor email if not on email row
-  let toEmail = (email as Record<string, unknown>).email as string | undefined;
-  if (!toEmail) {
-    console.log("[send] toEmail still missing after professor lookup, retrying");
-    const { data: prof } = await supabase
-      .from("professors")
-      .select("email")
-      .eq("id", email.professor_id)
-      .single();
-    toEmail = prof?.email ?? undefined;
+    console.log("[send] professor email lookup:", prof?.email ?? "(not found)");
+    toEmail = prof?.email || undefined;
   }
 
   if (!toEmail) {
-    console.warn("[send] could not resolve professor email — marking sent without sending");
-    await supabase.from("emails").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", emailId);
-    return NextResponse.json({ ok: true, warning: "No email address for professor" });
+    console.error("[send] no email address for professor — aborting, not marking sent");
+    return NextResponse.json({ error: "No email address for this professor" }, { status: 422 });
   }
 
   const fromName = userData.name ?? user.email ?? "";
@@ -87,10 +66,16 @@ export async function POST(request: Request) {
   const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
   const testOverride = process.env.TEST_EMAIL_OVERRIDE;
-  const recipient = overrideRecipient ?? testOverride ?? toEmail;
+  // Use || not ?? so an empty string overrideRecipient falls through to toEmail.
+  const recipient = overrideRecipient || testOverride || toEmail;
   const body = testOverride
     ? `${email.body ?? ""}\n\nThis is a test email going to ${testOverride}.`
     : (email.body ?? "");
+
+  if (!recipient) {
+    console.error("[send] recipient resolved to empty string — aborting");
+    return NextResponse.json({ error: "Recipient email is empty" }, { status: 422 });
+  }
 
   console.log("[send] recipient:", recipient, "| from:", from, "| subject:", email.subject ?? "(no subject)");
   console.log("[send] body length:", body.length, "chars | testOverride:", testOverride ?? "none");

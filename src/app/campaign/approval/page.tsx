@@ -39,20 +39,29 @@ function ApprovalContent() {
 
     const loadDrafts = async () => {
       try {
-        const res = await fetch("/api/emails/draft", {
+        const fetchDrafts = fetch("/api/emails/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ campaignId }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to generate drafts");
+        const fetchProfs = DEV_OVERRIDE_RECIPIENT
+          ? fetch(`/api/professors?campaignId=${campaignId}`)
+          : Promise.resolve(null);
+
+        const [draftsRes, profsRes] = await Promise.all([fetchDrafts, fetchProfs]);
+        const data = await draftsRes.json();
+        if (!draftsRes.ok) throw new Error(data.error ?? "Failed to generate drafts");
 
         const emailList: Email[] = data.emails ?? [];
         setEmails(emailList);
         setStates(Object.fromEntries(emailList.map((e) => [e.id, "pending" as EmailState])));
         setBodies(Object.fromEntries(emailList.map((e) => [e.id, e.body ?? ""])));
-        if (DEV_OVERRIDE_RECIPIENT) {
-          setRecipients(Object.fromEntries(emailList.map((e) => [e.id, e.email ?? ""])));
+        if (DEV_OVERRIDE_RECIPIENT && profsRes) {
+          const profData = await profsRes.json();
+          const profEmailMap: Record<string, string> = Object.fromEntries(
+            (profData.professors ?? []).map((p: { id: string; email: string | null }) => [p.id, p.email ?? ""])
+          );
+          setRecipients(Object.fromEntries(emailList.map((e) => [e.id, profEmailMap[e.professor_id ?? ""] ?? ""])));
         }
       } catch (err) {
         setDraftError(err instanceof Error ? err.message : "Failed to load drafts");

@@ -82,7 +82,6 @@ export async function POST(request: Request) {
     professor_name: string;
     university: string | null;
     department: string | null;
-    email: string | null;
     subject: string;
     body: string;
     status: string;
@@ -163,7 +162,6 @@ Research focus: ${profResearch}`;
         professor_name: prof.name,
         university: profUniversity || null,
         department: prof.department,
-        email: prof.email ?? null,
         subject,
         body,
         status: "draft",

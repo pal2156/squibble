@@ -66,9 +66,10 @@ export async function GET(request: Request) {
     }
 
     // Register Gmail Pub/Sub watch so we receive reply notifications.
-    // Best-effort: don't block the redirect if it fails.
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? origin;
-    fetch(`${appUrl}/api/gmail/watch`, {
+    // Use `origin` (the actual request origin) so this works in both local dev and
+    // production on Vercel. Never use NEXT_PUBLIC_APP_URL here — it would point to
+    // localhost even when running in the cloud, causing the watch call to fail silently.
+    fetch(`${origin}/api/gmail/watch`, {
       method: "POST",
       headers: {
         cookie: request.headers.get("cookie") ?? "",

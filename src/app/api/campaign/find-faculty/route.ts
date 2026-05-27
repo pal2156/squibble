@@ -124,6 +124,7 @@ Each object must have exactly these fields:
 - name (string)
 - email (string or null)
 - title (string or null, e.g. "Assistant Professor")
+- department (string, the name of the department or research group from the faculty page you found in Step 1, e.g. "Computer Science", "Mathematics", "Mechanical Engineering")
 - profile_url (string or null)
 - description (string, 2-3 sentences of current research, never just a title or department name)
 - research_areas (array of up to 5 keyword strings)
@@ -138,6 +139,7 @@ If absolutely no professors had enough information, return [].`,
           name: string;
           email: string | null;
           title: string | null;
+          department: string | null;
           profile_url: string | null;
           description: string | null;
           research_areas: string[];
@@ -148,7 +150,7 @@ If absolutely no professors had enough information, return [].`,
         const raw123 = extractText(step123Res.content);
         const parsedProfessors = await robustJson<Array<Omit<EnrichedProfessor, "university"> & { source_type?: string }>>(
           raw123,
-          "Extract professor records from this text and return a JSON array. Each object must have: name (string), email (string or null), title (string or null), profile_url (string or null), description (string), research_areas (array of strings), source_type (string)."
+          "Extract professor records from this text and return a JSON array. Each object must have: name (string), email (string or null), title (string or null), department (string or null), profile_url (string or null), description (string), research_areas (array of strings), source_type (string)."
         );
 
         console.log(`[EXTRACT] Found ${parsedProfessors.length} professors with substantive descriptions (target: ${targetCount})`);
@@ -285,6 +287,7 @@ Return ONLY JSON: {"title": "..."}`,
         }));
 
         if (rows.length > 0) {
+          console.log(`[INSERT] Sample professor payload:`, JSON.stringify(rows[0], null, 2));
           await supabase.from("professors").insert(rows);
         }
 
