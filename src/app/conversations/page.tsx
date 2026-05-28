@@ -188,6 +188,7 @@ export default function ConversationsPage() {
   const [showReply, setShowReply] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
+  const [loading, setLoading] = useState(true);
 
   const sorted = useMemo(() => sortConversations(conversations, sortOrder), [conversations, sortOrder]);
 
@@ -200,7 +201,8 @@ export default function ConversationsPage() {
           setSelected(data[0]);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   function selectConversation(conv: SentEmail) {
@@ -211,6 +213,47 @@ export default function ConversationsPage() {
   function openReply(_email: SentEmail) {
     setReplyText("");
     setShowReply(true);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex py-4" style={{ height: "100vh" }}>
+        <div
+          className="flex-shrink-0 flex flex-col border-r rounded-xl overflow-hidden"
+          style={{ width: "288px", borderColor: "var(--border-subtle)", background: "var(--bg-card)" }}
+        >
+          <div className="px-5 py-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+            <div className="h-4 w-28 rounded mb-2 animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+            <div className="h-3 w-16 rounded animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="px-5 py-4 border-b animate-pulse" style={{ borderColor: "var(--border-subtle)" }}>
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-3 rounded w-28" style={{ background: "var(--bg-elevated)" }} />
+                    <div className="h-2.5 rounded w-36" style={{ background: "var(--bg-elevated)" }} />
+                    <div className="h-5 rounded-full w-20 mt-1" style={{ background: "var(--bg-elevated)" }} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="flex-1 overflow-hidden" style={{ background: "var(--bg-base)" }}>
+          <div className="max-w-2xl mx-auto px-8 py-8">
+            <div className="h-5 w-48 rounded mb-2 animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+            <div className="h-3.5 w-64 rounded mb-8 animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+            <div className="border-t pt-8 space-y-3 animate-pulse" style={{ borderColor: "var(--border-subtle)" }}>
+              <div className="h-3 w-full rounded" style={{ background: "var(--bg-elevated)" }} />
+              <div className="h-3 w-full rounded" style={{ background: "var(--bg-elevated)" }} />
+              <div className="h-3 w-3/4 rounded" style={{ background: "var(--bg-elevated)" }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

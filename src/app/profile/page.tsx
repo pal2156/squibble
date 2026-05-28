@@ -518,7 +518,19 @@ export default function ProfilePage() {
     }
   };
 
-  if (!loaded) return null;
+  if (!loaded) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center px-6 py-12">
+        <div className="w-full max-w-lg">
+          <div className="flex gap-3 mb-8">
+            <div className="flex-1 h-24 rounded-xl animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+            <div className="flex-1 h-24 rounded-xl animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+          </div>
+          <div className="h-48 rounded-2xl animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+        </div>
+      </div>
+    );
+  }
 
   const cardStyle = (active: boolean) => ({
     background: active ? "rgba(103,142,141,0.1)" : "var(--bg-card)",

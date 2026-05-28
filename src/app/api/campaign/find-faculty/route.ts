@@ -187,7 +187,15 @@ If absolutely no professors had enough information, return [].`,
           messages: [
             {
               role: "user",
-              content: `Rank these professors 0-100 for this student's research outreach.
+              content: `Score each professor's fit for this student's research outreach on a scale of 0-100.
+
+Use this calibration:
+- 90-100: Excellent fit. Strong research overlap, closely matching background, active lab, email available.
+- 80-89: Good fit. Clear research overlap with minor gaps, relevant background, reasonably active.
+- 70-79: Decent fit. Partial overlap or background mismatch, still worth contacting.
+- Below 70: Weak fit. Poor overlap, irrelevant background, or missing critical information. Mark these but do not exclude them.
+
+Do not compress scores into a narrow band. If most professors are strong, most should score in the 85-99 range. If most are mediocre, most should sit in the 70-85 range. Give each professor a score that reflects their individual fit. Two professors with meaningfully different research overlap must receive meaningfully different scores.
 
 Student profile:
 ${profileSummary}
@@ -216,27 +224,20 @@ Return ONLY a JSON array with all original fields plus "fit_score" (integer 0-10
           "Extract the professor ranking data from this text and return it as a JSON array. Each object should include all professor fields plus fit_score (integer 0-100)."
         );
 
-        // ── Rescale fit scores into the 82-97% band ────────────────────────────
-        // Sort descending so #1 gets the highest scaled score
+        // Sort descending by raw fit score, then drop professors below the 70% threshold.
         rankedProfessors.sort((a, b) => {
           const sa = typeof a.fit_score === "number" ? a.fit_score : 0;
           const sb = typeof b.fit_score === "number" ? b.fit_score : 0;
           return sb - sa;
         });
 
-        const MIN_SCORE = 82;
-        const MAX_SCORE = 97;
-        const n = rankedProfessors.length;
+        const qualifiedProfessors = rankedProfessors.filter(
+          (p) => typeof p.fit_score === "number" && p.fit_score >= 70
+        );
 
-        rankedProfessors.forEach((p, i) => {
-          if (typeof p.fit_score === "number") {
-            // Linear interpolation: rank 0 → MAX_SCORE, rank n-1 → MIN_SCORE
-            const scaled = n === 1
-              ? MAX_SCORE
-              : Math.round(MAX_SCORE - (i / (n - 1)) * (MAX_SCORE - MIN_SCORE));
-            p.fit_score = scaled;
-          }
-        });
+        // Use qualifiedProfessors from here on — scores are Claude's honest 0-100 ratings.
+        rankedProfessors.length = 0;
+        rankedProfessors.push(...qualifiedProfessors);
 
         // ── Step 5: Haiku generates the campaign title ─────────────────────────
         const step5Res = await anthropic.messages.create({

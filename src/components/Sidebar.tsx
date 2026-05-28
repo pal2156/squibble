@@ -128,36 +128,15 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
         <div className="flex items-center justify-between px-3 py-5 mb-2 flex-shrink-0" style={{ height: "64px" }}>
           {open && (
             <div
-              className="flex items-center gap-2"
+              className="flex items-center gap-1"
               style={{ whiteSpace: "nowrap", overflow: "hidden" }}
             >
-              {/* 4-point star mark */}
-              <div
-                className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(103,142,141,0.12)" }}
-              >
-                <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden="true">
-                  <path
-                    d="M5.5 0L6.6 4.4L11 5.5L6.6 6.6L5.5 11L4.4 6.6L0 5.5L4.4 4.4L5.5 0Z"
-                    fill="#232C33"
-                  />
-                </svg>
-              </div>
+              <Image src="/logo.png" alt="Squibble" width={32} height={32} className="flex-shrink-0" />
               <span
                 className="text-sm font-semibold"
                 style={{ color: "#232C33", letterSpacing: "-0.05em" }}
               >
                 Squibble
-              </span>
-              <span
-                className="text-[9px] font-medium px-1.5 py-0.5 rounded-full border"
-                style={{
-                  color: "rgba(60,83,82,0.5)",
-                  borderColor: "#BBD2DD",
-                  background: "rgba(187,210,221,0.2)",
-                }}
-              >
-                BETA
               </span>
             </div>
           )}
@@ -222,56 +201,28 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           })}
         </nav>
 
-        {/* Upgrade card */}
-        <div className="px-2 mt-3 mb-2 flex-shrink-0">
-          {open ? (
-            <div
-              className="rounded-2xl"
-              style={{
-                background: "#FFFFFF",
-                border: "1px solid #BBD2DD",
-                borderRadius: "16px",
-                padding: "20px 16px",
-              }}
-            >
-              <p
-                className="text-sm font-semibold text-center mb-1.5"
-                style={{ color: "#232C33" }}
-              >
-                Upgrade to Pro
-              </p>
-              <p
-                className="text-xs text-center mb-4 leading-snug"
-                style={{ color: "#3C5352" }}
-              >
-                Get 1 month free and unlock all features
-              </p>
-              <div className="flex justify-center">
-                <button
-                  onClick={() => setUpgradeOpen(true)}
-                  className="px-5 py-1.5 rounded-full text-xs font-medium transition-colors"
-                  style={{ background: "#678E8D", color: "#FFFFFF" }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "#3C5352"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "#678E8D"; }}
-                >
-                  Upgrade
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <button
-                onClick={() => setUpgradeOpen(true)}
-                title="Upgrade to Pro"
-                className="px-3 py-1 rounded-full text-[10px] font-medium transition-colors"
-                style={{ background: "#678E8D", color: "#FFFFFF" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "#3C5352"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = "#678E8D"; }}
-              >
-                Pro
-              </button>
-            </div>
-          )}
+        {/* Upgrade row */}
+        <div className="px-2 mb-0 flex-shrink-0">
+          <button
+            onClick={() => setUpgradeOpen(true)}
+            title={!open ? "Upgrade" : undefined}
+            className={cn(
+              "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150",
+              open ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
+            )}
+            style={{ color: "#3C5352" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(35,44,51,0.04)";
+              e.currentTarget.style.color = "#232C33";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#3C5352";
+            }}
+          >
+            <Image src="/icons/upgrade.png" alt="Upgrade" width={22} height={22} className="flex-shrink-0" />
+            {open && <span style={{ whiteSpace: "nowrap" }}>Upgrade</span>}
+          </button>
         </div>
 
         {/* Bottom nav items */}

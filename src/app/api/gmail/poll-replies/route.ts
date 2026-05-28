@@ -20,6 +20,44 @@ function extractTextBody(payload: {
   return "";
 }
 
+function cleanReplyBody(text: string): string {
+  // Step 1: Strip block-form Gmail external sender banners
+  let cleaned = text.replace(
+    /ZjQcmQRY[a-zA-Z]+BannerStart[\s\S]*?ZjQcmQRY[a-zA-Z]+BannerEnd/g,
+    ""
+  );
+
+  // Step 1b: Strip standalone banner/security notice lines
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      return (
+        !t.includes("ZjQcmQRY") &&
+        !t.includes("This Message Is From an External Sender") &&
+        !t.includes("This message came from outside your organization")
+      );
+    })
+    .join("\n");
+
+  // Step 2: Truncate at the first line that signals a quoted thread
+  const quoteStartPatterns = [
+    /^On .+wrote:/m,
+    /^-{5}Original Message-{5}/m,
+    /^From: .+ Sent:/m,
+    /^>.*$/m,
+  ];
+  let cutIndex = cleaned.length;
+  for (const pattern of quoteStartPatterns) {
+    const match = pattern.exec(cleaned);
+    if (match !== null && match.index < cutIndex) cutIndex = match.index;
+  }
+  cleaned = cleaned.slice(0, cutIndex);
+
+  // Step 3: Trim and collapse runs of 3+ blank lines
+  return cleaned.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // Polling fallback for local development where Pub/Sub cannot reach localhost.
 // Call GET /api/gmail/poll-replies from the browser while logged in.
 // Checks every sent email thread for a reply, classifies it, and updates the DB.
@@ -190,7 +228,7 @@ export async function GET() {
       const { error: upsertErr } = await supabase.from("replies").upsert(
         {
           email_id: email.id,
-          body: replyBody,
+          body: cleanReplyBody(replyBody),
           classification,
           received_at: new Date().toISOString(),
         },

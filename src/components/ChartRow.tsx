@@ -27,8 +27,8 @@ const DONUT_COLORS: Record<string, string> = {
   "Negative Reply": "#3C5352",
 };
 
-type TimeRange = "All Campaigns" | "Last 7 Days" | "Last 30 Days" | "Last 90 Days";
-const RANGES: TimeRange[] = ["All Campaigns", "Last 7 Days", "Last 30 Days", "Last 90 Days"];
+type CampaignRange = "Last 3 Campaigns" | "Last 5 Campaigns" | "All Campaigns";
+const RANGES: CampaignRange[] = ["Last 3 Campaigns", "Last 5 Campaigns", "All Campaigns"];
 
 // --- Shared card shell ---
 
@@ -172,28 +172,15 @@ function CampaignTick({
 }
 
 function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
-  const [range, setRange] = useState<TimeRange>("All Campaigns");
+  const [range, setRange] = useState<CampaignRange>("Last 5 Campaigns");
 
   const chartData = useMemo((): CampaignPoint[] => {
     if (emails.length === 0) return [];
 
-    const maxMs = Math.max(...emails.map((e) => parseMs(e.dateSent)));
-    const DAY = 86400000;
-    const cutoffMs =
-      range === "Last 7 Days"
-        ? maxMs - 7 * DAY
-        : range === "Last 30 Days"
-        ? maxMs - 30 * DAY
-        : range === "Last 90 Days"
-        ? maxMs - 90 * DAY
-        : 0;
-
-    const filtered = emails.filter((e) => parseMs(e.dateSent) >= cutoffMs);
-
     type CampaignMeta = { sent: number; responses: number; firstDateMs: number; createdAtMs: number };
     const campaignMap = new Map<string, CampaignMeta>();
 
-    filtered.forEach((e) => {
+    emails.forEach((e) => {
       const dateMs = parseMs(e.dateSent);
       const createdMs = e.campaignCreatedAt ? new Date(e.campaignCreatedAt).getTime() : 0;
       if (!campaignMap.has(e.campaign)) {
@@ -212,12 +199,18 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
       return ma.createdAtMs - mb.createdAtMs;
     });
 
-    return campaignOrder.map((campaign) => {
+    const allPoints = campaignOrder.map((campaign) => {
       const { sent, responses } = campaignMap.get(campaign)!;
       const name = campaign.split(" - ")[0];
       return { campaign: name, sent, responses };
     });
+
+    if (range === "Last 3 Campaigns") return allPoints.slice(-3);
+    if (range === "Last 5 Campaigns") return allPoints.slice(-5);
+    return allPoints;
   }, [emails, range]);
+
+  const showXAxisLabels = !(range === "All Campaigns" && chartData.length > 5);
 
   return (
     <CardShell
@@ -250,7 +243,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
         <div className="relative">
           <select
             value={range}
-            onChange={(e) => setRange(e.target.value as TimeRange)}
+            onChange={(e) => setRange(e.target.value as CampaignRange)}
             className="appearance-none text-xs rounded-lg border pl-2.5 pr-7 py-1 cursor-pointer"
             style={{
               background: "var(--bg-card)",
@@ -290,7 +283,7 @@ function ResponseRateCard({ emails }: { emails: SentEmail[] }) {
               dataKey="campaign"
               ticks={chartData.map((d) => d.campaign)}
               interval={0}
-              tick={(props) => <CampaignTick {...props} x={props.x as number | undefined} y={props.y as number | undefined} />}
+              tick={showXAxisLabels ? (props) => <CampaignTick {...props} x={props.x as number | undefined} y={props.y as number | undefined} /> : false}
               tickLine={false}
               axisLine={false}
             />

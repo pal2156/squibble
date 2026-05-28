@@ -26,6 +26,44 @@ function extractTextBody(payload: {
   return "";
 }
 
+function cleanReplyBody(text: string): string {
+  // Step 1: Strip block-form Gmail external sender banners
+  let cleaned = text.replace(
+    /ZjQcmQRY[a-zA-Z]+BannerStart[\s\S]*?ZjQcmQRY[a-zA-Z]+BannerEnd/g,
+    ""
+  );
+
+  // Step 1b: Strip standalone banner/security notice lines
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      return (
+        !t.includes("ZjQcmQRY") &&
+        !t.includes("This Message Is From an External Sender") &&
+        !t.includes("This message came from outside your organization")
+      );
+    })
+    .join("\n");
+
+  // Step 2: Truncate at the first line that signals a quoted thread
+  const quoteStartPatterns = [
+    /^On .+wrote:/m,
+    /^-{5}Original Message-{5}/m,
+    /^From: .+ Sent:/m,
+    /^>.*$/m,
+  ];
+  let cutIndex = cleaned.length;
+  for (const pattern of quoteStartPatterns) {
+    const match = pattern.exec(cleaned);
+    if (match !== null && match.index < cutIndex) cutIndex = match.index;
+  }
+  cleaned = cleaned.slice(0, cutIndex);
+
+  // Step 3: Trim and collapse runs of 3+ blank lines
+  return cleaned.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export async function POST(request: Request) {
   // Log raw body immediately — must be the very first thing so we see every request
   const rawBody = await request.text();
@@ -231,7 +269,7 @@ export async function POST(request: Request) {
       const { error: upsertErr } = await admin.from("replies").upsert(
         {
           email_id: emailRow.id,
-          body: replyBody,
+          body: cleanReplyBody(replyBody),
           classification,
           received_at: new Date().toISOString(),
         },
