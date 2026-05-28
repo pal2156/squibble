@@ -3,7 +3,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { ChevronRight, X } from "lucide-react";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase/client";
 import { ChartRow } from "@/components/ChartRow";
 
 type EmailStatus = "Positive Reply" | "No Response" | "Negative Reply";
@@ -83,12 +82,14 @@ function dateMatchesExact(dateSent: string, parsed: { month: number; day: number
 
 export default function DashboardPage() {
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch("/api/dashboard")
       .then((r) => r.json())
       .then(({ emails }) => { if (emails) setSentEmails(emails); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   const totalSent = sentEmails.length;
@@ -116,20 +117,10 @@ export default function DashboardPage() {
   const [campaignFilter, setCampaignFilter] = useState("All Campaigns");
   const [universityFilter, setUniversityFilter] = useState("All Universities");
   const [selectedEmail, setSelectedEmail] = useState<SentEmail | null>(null);
-  const [firstName, setFirstName] = useState("");
   const panelRef = useRef<HTMLDivElement>(null);
   const monthRef = useRef<HTMLInputElement>(null);
   const dayRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      const full = user.user_metadata?.full_name ?? user.email ?? "";
-      setFirstName(full.split(" ")[0]);
-    });
-  }, []);
 
   useEffect(() => {
     if (!selectedEmail) return;
@@ -232,6 +223,75 @@ export default function DashboardPage() {
     { label: "Campaigns Run", value: campaigns, iconSrc: "/icons/campaigns-run.png", bg: "rgba(103,142,141,0.1)" },
   ];
 
+  if (loading) {
+    return (
+      <div className="flex overflow-hidden" style={{ height: "100vh" }}>
+        <div className="flex-1 min-w-0 overflow-y-auto">
+          <div className="px-8 py-8 max-w-6xl mx-auto">
+            {/* Subtitle skeleton */}
+            <div className="mb-6 flex justify-center">
+              <div className="h-3.5 w-56 rounded animate-pulse" style={{ background: "var(--bg-elevated)" }} />
+            </div>
+
+            {/* Stats cards skeleton */}
+            <div
+              className="flex items-stretch rounded-xl border mb-6 overflow-hidden animate-pulse"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
+            >
+              {[0, 1, 2, 3].map((idx) => (
+                <div
+                  key={idx}
+                  className="flex-1 flex items-center gap-3 px-5 py-4"
+                  style={{ borderLeft: idx > 0 ? "1px solid var(--border-subtle)" : "none" }}
+                >
+                  <div className="w-8 h-8 rounded-lg flex-shrink-0" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="space-y-2">
+                    <div className="h-2.5 w-20 rounded" style={{ background: "var(--bg-elevated)" }} />
+                    <div className="h-5 w-10 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Chart area skeleton */}
+            <div
+              className="flex gap-5 mb-6 animate-pulse"
+              style={{ height: "220px" }}
+            >
+              <div className="flex-1 rounded-xl border" style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }} />
+              <div className="w-64 rounded-xl border" style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }} />
+            </div>
+
+            {/* Table skeleton */}
+            <div
+              className="rounded-xl border overflow-hidden animate-pulse"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)" }}
+            >
+              <div className="flex items-center justify-between px-5 py-3 border-b" style={{ borderColor: "var(--border-subtle)" }}>
+                <div className="h-3 w-24 rounded" style={{ background: "var(--bg-elevated)" }} />
+                <div className="h-3 w-12 rounded" style={{ background: "var(--bg-elevated)" }} />
+              </div>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-5 px-5 py-3"
+                  style={{ borderBottom: i < 4 ? "1px solid var(--border-subtle)" : "none" }}
+                >
+                  <div className="h-3 w-28 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 w-32 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 w-28 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 w-36 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-3 w-20 rounded" style={{ background: "var(--bg-elevated)" }} />
+                  <div className="h-5 w-24 rounded-full ml-auto" style={{ background: "var(--bg-elevated)" }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex overflow-hidden" style={{ height: "100vh" }}>
     {/* Left: scrollable content */}
@@ -239,9 +299,6 @@ export default function DashboardPage() {
     <div className="px-8 py-8 max-w-6xl mx-auto">
       {/* Header */}
       <div className="mb-6 text-center">
-        <h1 className="text-xl font-medium mb-0.5" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
-          Hello, {firstName || "there"}.
-        </h1>
         <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
           Track your outreach across all campaigns.
         </p>
