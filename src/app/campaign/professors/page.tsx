@@ -198,12 +198,13 @@ function ProfessorsContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex flex-col items-center justify-center min-h-screen gap-5">
         <div className="flex items-center gap-2.5">
           {[0, 1, 2].map((i) => (
             <span key={i} className="block w-2 h-2 rounded-full" style={{ background: "var(--accent)", animation: `pulse-dot 1.2s ease-in-out ${i * 0.18}s infinite` }} />
           ))}
         </div>
+        <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>Matching professors to your profile…</p>
         <style>{`@keyframes pulse-dot { 0%, 100% { opacity: 0.2; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
       </div>
     );

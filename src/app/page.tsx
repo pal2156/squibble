@@ -6,12 +6,8 @@ import { CodeRedirectHandler } from "@/components/CodeRedirectHandler";
 import "./landing.css";
 
 // ─── Google OAuth ──────────────────────────────────────────────
-async function handleGoogleLogin() {
+async function signInWithGoogle(redirectTo: string) {
   const supabase = createClient();
-  // Use the canonical app URL from env so www vs non-www never causes a mismatch
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-  const redirectTo = `${appUrl}/auth/callback`;
-  console.log("[OAuth] initiating Google sign-in, redirectTo:", redirectTo);
   await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -23,6 +19,21 @@ async function handleGoogleLogin() {
       },
     },
   });
+}
+
+async function handleGoogleLogin() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+  await signInWithGoogle(`${appUrl}/auth/callback`);
+}
+
+async function handleGoogleLoginForPlan(plan: "pro" | "max") {
+  // Store intent in a short-lived cookie before leaving for OAuth. Supabase URL
+  // validation may strip query params from redirectTo, losing the ?next= param.
+  // The cookie survives the redirect chain and lets auth/callback recover it.
+  document.cookie = `squibble_plan_intent=${plan}; path=/; max-age=300; SameSite=Lax`;
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+  const next = encodeURIComponent(`/api/stripe/redirect?plan=${plan}`);
+  await signInWithGoogle(`${appUrl}/auth/callback?next=${next}`);
 }
 
 // ─── Brand mark ────────────────────────────────────────────────
@@ -63,7 +74,7 @@ function Nav() {
           <div className="nav-links">
             <a className="nav-link" href="#product">Product</a>
             <a className="nav-link" href="#pricing">Pricing</a>
-            <a className="nav-link" href="#company">Company</a>
+            <a className="nav-link" href="/about">Company</a>
           </div>
           <button
             className="btn btn-primary btn-sm"
@@ -623,14 +634,12 @@ const PRO_FEATURES = [
   "30 professor searches",
   "30 personalized emails",
   "Reply tracking dashboard",
-  "Follow-up automation",
   "Gmail integration",
 ];
 const MAX_FEATURES = [
   "75 professor searches",
   "75 personalized emails",
   "Reply tracking dashboard",
-  "Follow-up automation",
   "Gmail integration",
 ];
 
@@ -758,7 +767,7 @@ export default function LandingPage() {
               <ul className="price-features">
                 {PRO_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
-              <button className="price-cta" onClick={handleGoogleLogin}>Get started</button>
+              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("pro")}>Get started</button>
             </div>
             <div className="price-card reveal">
               <div className="price-name">Max</div>
@@ -770,14 +779,14 @@ export default function LandingPage() {
               <ul className="price-features">
                 {MAX_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
-              <button className="price-cta" onClick={handleGoogleLogin}>Get started</button>
+              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("max")}>Get started</button>
             </div>
           </div>
         </div>
       </section>
 
       {/* FAQ */}
-      <section data-screen-label="06 FAQ">
+      <section id="faq" data-screen-label="06 FAQ">
         <div className="container-narrow">
           <div className="section-header reveal">
             <div className="eyebrow"><span className="dot"></span>FAQ</div>
@@ -802,28 +811,23 @@ export default function LandingPage() {
           <div className="footer-col">
             <h4>Product</h4>
             <ul>
-              <li><a href="#">Features</a></li>
-              <li><a href="#">How it works</a></li>
+              <li><a href="#product">How it works</a></li>
               <li><a href="#pricing">Pricing</a></li>
-              <li><a href="#">Changelog</a></li>
+              <li><a href="#faq">FAQ</a></li>
             </ul>
           </div>
           <div className="footer-col">
             <h4>Company</h4>
             <ul>
-              <li><a href="#">About</a></li>
-              <li><a href="#">Blog</a></li>
-              <li><a href="#">Careers</a></li>
-              <li><a href="#">Contact</a></li>
+              <li><a href="/about">About</a></li>
+              <li><a href="mailto:contact@squibble.pro">Contact</a></li>
             </ul>
           </div>
           <div className="footer-col">
-            <h4>Resources</h4>
+            <h4>Legal</h4>
             <ul>
-              <li><a href="#">FAQ</a></li>
-              <li><a href="#">Privacy Policy</a></li>
-              <li><a href="#">Terms of Service</a></li>
-              <li><a href="#">Support</a></li>
+              <li><a href="/privacy">Privacy Policy</a></li>
+              <li><a href="/terms">Terms of Service</a></li>
             </ul>
           </div>
         </div>

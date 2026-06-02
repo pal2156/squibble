@@ -3,21 +3,27 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
+import SettingsModal from "./SettingsModal";
 import { CampaignDraftProvider } from "./CampaignDraftContext";
 
 export default function LayoutShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
 
-  // Landing page renders without the shell
-  if (pathname === "/") {
+  // Landing, pricing, legal, and about pages render without the shell
+  if (pathname === "/" || pathname === "/pricing" || pathname === "/terms" || pathname === "/privacy" || pathname === "/about") {
     return <>{children}</>;
   }
 
   return (
     <CampaignDraftProvider>
       <div className="flex min-h-screen">
-        <Sidebar open={open} onToggle={() => setOpen((o) => !o)} />
+        <Sidebar
+          open={open}
+          onToggle={() => setOpen((o) => !o)}
+          onSettingsOpen={() => setSettingsOpen(true)}
+        />
         <main
           className="flex-1 min-h-screen overflow-y-auto"
           style={{
@@ -29,6 +35,7 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
           {children}
         </main>
       </div>
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </CampaignDraftProvider>
   );
 }

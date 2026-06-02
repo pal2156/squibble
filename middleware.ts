@@ -31,8 +31,14 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
-  // "/" is the landing page (public), "/auth/*" is the OAuth callback
-  const isPublicRoute = pathname === "/" || pathname.startsWith("/auth");
+  // "/", "/pricing", "/privacy", "/terms", "/about" are public; "/auth/*" is the OAuth callback
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/pricing" ||
+    pathname === "/privacy" ||
+    pathname === "/terms" ||
+    pathname === "/about" ||
+    pathname.startsWith("/auth");
 
   // API routes handle their own auth and must return JSON, not an HTML redirect
   if (!user && !isPublicRoute && !pathname.startsWith("/api/")) {

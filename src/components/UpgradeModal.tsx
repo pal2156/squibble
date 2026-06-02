@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { X, Check } from "lucide-react";
 
 interface UpgradeModalProps {
@@ -21,7 +21,7 @@ const PLANS = [
       "Gmail integration",
     ],
     popular: false,
-    idx: 1,
+    priceId: null as string | null,
   },
   {
     name: "Pro",
@@ -33,11 +33,10 @@ const PLANS = [
       "30 professor searches",
       "30 personalized emails",
       "Reply tracking dashboard",
-      "Follow-up automation",
       "Gmail integration",
     ],
     popular: true,
-    idx: 2,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO ?? "price_1Tdd5F2fASOksRg20N4gCDgC",
   },
   {
     name: "Max",
@@ -49,15 +48,42 @@ const PLANS = [
       "75 professor searches",
       "75 personalized emails",
       "Reply tracking dashboard",
-      "Follow-up automation",
       "Gmail integration",
     ],
     popular: false,
-    idx: 3,
+    priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX ?? "price_1Tdd5k2fASOksRg2Z9WHMbkG",
   },
 ];
 
 export default function UpgradeModal({ onClose }: UpgradeModalProps) {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  async function handleCheckout(priceId: string, planName: string) {
+    setLoadingPlan(planName);
+    setCheckoutError(null);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priceId }),
+      });
+      if (!res.ok) {
+        throw new Error(`Checkout failed (${res.status})`);
+      }
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
+    } catch (err) {
+      console.error("[UpgradeModal] checkout error:", err);
+      setLoadingPlan(null);
+      setCheckoutError("Something went wrong. Please try again.");
+    }
+  }
+
   // Lock body scroll while open
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -120,6 +146,13 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
           </p>
         </div>
 
+        {/* Error */}
+        {checkoutError && (
+          <p className="text-center text-sm mb-4" style={{ color: "#e05252" }}>
+            {checkoutError}
+          </p>
+        )}
+
         {/* Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
           {PLANS.map((plan) => (
@@ -177,8 +210,11 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
               </ul>
 
               <button
-                onClick={() => console.log(`selected package ${plan.idx}`)}
-                className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                onClick={() => {
+                  if (plan.priceId) handleCheckout(plan.priceId, plan.name);
+                }}
+                disabled={!plan.priceId || loadingPlan === plan.name}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
                 style={{ background: "var(--accent)", color: "#fff" }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.background = "var(--accent-hover)";
@@ -187,7 +223,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
                   e.currentTarget.style.background = "var(--accent)";
                 }}
               >
-                {plan.cta}
+                {loadingPlan === plan.name ? "Redirecting..." : plan.cta}
               </button>
             </div>
           ))}

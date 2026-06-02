@@ -17,7 +17,6 @@ const navItems = [
 
 const bottomNavItems = [
   { label: "Settings", iconSrc: "/icons/settings.png" },
-  { label: "Help & Information", iconSrc: "/icons/help.png" },
 ];
 
 interface UserRecord {
@@ -30,9 +29,10 @@ interface UserRecord {
 interface SidebarProps {
   open: boolean;
   onToggle: () => void;
+  onSettingsOpen: () => void;
 }
 
-export default function Sidebar({ open, onToggle }: SidebarProps) {
+export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -230,12 +230,13 @@ export default function Sidebar({ open, onToggle }: SidebarProps) {
           {bottomNavItems.map(({ label, iconSrc }) => (
             <button
               key={label}
+              onClick={onSettingsOpen}
               title={!open ? label : undefined}
               className={cn(
                 "w-full flex items-center rounded-lg text-sm font-medium transition-all duration-150",
                 open ? "gap-3 px-3 py-2.5" : "justify-center py-2.5"
               )}
-              style={{ color: "#3C5352" }}
+              style={{ background: "transparent", color: "#3C5352" }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = "rgba(35,44,51,0.04)";
                 e.currentTarget.style.color = "#232C33";

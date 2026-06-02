@@ -6,7 +6,17 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const googleError = searchParams.get("error");
-  const next = searchParams.get("next") ?? "/dashboard";
+
+  // Prefer ?next= from URL; fall back to the squibble_plan_intent cookie set
+  // before OAuth in case Supabase URL validation stripped the query param.
+  let next = searchParams.get("next") ?? "/dashboard";
+  if (next === "/dashboard") {
+    const cookieHeader = request.headers.get("cookie") ?? "";
+    const planMatch = cookieHeader.match(/(?:^|;\s*)squibble_plan_intent=([^;]+)/);
+    if (planMatch && (planMatch[1] === "pro" || planMatch[1] === "max")) {
+      next = `/api/stripe/redirect?plan=${planMatch[1]}`;
+    }
+  }
 
   console.log("[auth/callback] incoming params:", {
     hasCode: !!code,
@@ -79,7 +89,10 @@ export async function GET(request: Request) {
     });
 
     console.log("[auth/callback] redirecting to:", `${origin}${next}`);
-    return NextResponse.redirect(`${origin}${next}`);
+    const successResponse = NextResponse.redirect(`${origin}${next}`);
+    // Clear the plan intent cookie now that we've consumed it.
+    successResponse.cookies.set("squibble_plan_intent", "", { maxAge: 0, path: "/" });
+    return successResponse;
   } catch (err) {
     console.error("[auth/callback] unexpected exception:", err);
     return NextResponse.redirect(`${origin}/?error=auth_failed`);
