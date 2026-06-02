@@ -13,6 +13,7 @@ const navItems = [
   { href: "/conversations", label: "Conversations", iconSrc: "/icons/conversations.png" },
   { href: "/campaign", label: "New Campaign", iconSrc: "/icons/new-campaign.png" },
   { href: "/profile", label: "Profile", iconSrc: "/icons/profile.png" },
+  { href: "/usage", label: "Usage", iconSrc: "/icons/campaigns-run.png" },
 ];
 
 const bottomNavItems = [
@@ -96,8 +97,8 @@ export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps
     return pathname.startsWith(href);
   };
 
-  const initials = userRecord?.name
-    ? userRecord.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+  const initial = userRecord?.name
+    ? userRecord.name.trim()[0].toUpperCase()
     : "?";
 
   const displayName = userRecord?.name
@@ -270,20 +271,12 @@ export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps
               if (!popoverOpen) e.currentTarget.style.background = "rgba(35,44,51,0.04)";
             }}
           >
-            {userRecord?.avatar_url ? (
-              <img
-                src={userRecord.avatar_url}
-                alt={userRecord.name ?? ""}
-                className="w-7 h-7 rounded-full flex-shrink-0 object-cover"
-              />
-            ) : (
-              <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                style={{ background: "#678E8D", color: "#FFFFFF" }}
-              >
-                {initials}
-              </div>
-            )}
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+              style={{ background: "#3C5352", color: "#FFFFFF" }}
+            >
+              {initial}
+            </div>
             {open && (
               <div className="ml-3 min-w-0" style={{ whiteSpace: "nowrap" }}>
                 <p className="text-xs font-medium" style={{ color: "#232C33" }}>{displayName}</p>
@@ -332,20 +325,12 @@ export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps
           {/* Profile header */}
           <div className="p-4 border-b" style={{ borderColor: "#BBD2DD" }}>
             <div className="flex items-center gap-3">
-              {userRecord?.avatar_url ? (
-                <img
-                  src={userRecord.avatar_url}
-                  alt={userRecord.name ?? ""}
-                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                />
-              ) : (
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
-                  style={{ background: "#678E8D", color: "#FFFFFF" }}
-                >
-                  {initials}
-                </div>
-              )}
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0"
+                style={{ background: "#3C5352", color: "#FFFFFF" }}
+              >
+                {initial}
+              </div>
               <div className="min-w-0">
                 <p
                   className="text-sm font-medium truncate"

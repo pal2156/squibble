@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${origin}/dashboard?payment=success`,
-      cancel_url: `${origin}/pricing`,
+      cancel_url: `${origin}/dashboard`,
     });
 
     return NextResponse.json({ url: session.url });

@@ -294,6 +294,8 @@ Return ONLY JSON: {"title": "..."}`,
 
         await supabase.from("campaigns").update({ title, status: "active" }).eq("id", campaignId);
 
+        await supabase.rpc("increment_searches_used", { uid: user.id });
+
         controller.enqueue(sse({ type: "done", title }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error";

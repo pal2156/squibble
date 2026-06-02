@@ -117,6 +117,8 @@ export async function POST(request: Request) {
       sent_at: new Date().toISOString(),
     }).eq("id", emailId);
 
+    await supabase.rpc("increment_emails_sent", { uid: user.id });
+
     console.log("[send] email row updated to sent");
     return NextResponse.json({ ok: true, gmailMessageId, gmailThreadId });
   } catch (err) {
