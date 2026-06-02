@@ -85,11 +85,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/dashboard")
-      .then((r) => r.json())
-      .then(({ emails }) => { if (emails) setSentEmails(emails); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    function fetchData() {
+      fetch("/api/dashboard")
+        .then((r) => r.json())
+        .then(({ emails }) => {
+          if (cancelled || !emails) return;
+          setSentEmails(emails);
+          setSelectedEmail((prev) => {
+            if (!prev) return null;
+            return (emails as SentEmail[]).find((e) => e.id === prev.id) ?? prev;
+          });
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }
+
+    fetchData();
+    const intervalId = setInterval(fetchData, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   const totalSent = sentEmails.length;

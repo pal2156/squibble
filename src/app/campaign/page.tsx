@@ -6,60 +6,6 @@ import { ArrowRight } from "lucide-react";
 import { useCampaignDraft } from "@/components/CampaignDraftContext";
 import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
-function LoadingModal({
-  message,
-  visible,
-}: {
-  message: string;
-  visible: boolean;
-}) {
-  return (
-    <div
-      className="fixed inset-0 flex items-center justify-center z-50"
-      style={{
-        background: "rgba(35, 44, 51, 0.7)",
-        backdropFilter: "blur(4px)",
-        opacity: visible ? 1 : 0,
-        transition: "opacity 300ms ease",
-        pointerEvents: visible ? "auto" : "none",
-      }}
-    >
-      <div
-        className="rounded-2xl px-10 py-10 flex flex-col items-center gap-7 shadow-2xl"
-        style={{
-          background: "var(--bg-card)",
-          border: "1px solid var(--border-subtle)",
-          minWidth: 320,
-        }}
-      >
-        <div className="flex items-center gap-2.5">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="block w-2 h-2 rounded-full"
-              style={{
-                background: "var(--accent)",
-                animation: `pulse-dot 1.2s ease-in-out ${i * 0.18}s infinite`,
-              }}
-            />
-          ))}
-        </div>
-        <p
-          className="text-sm font-medium text-center"
-          style={{ color: "var(--ink-secondary)", minWidth: 240 }}
-        >
-          {message}
-        </p>
-      </div>
-      <style>{`
-        @keyframes pulse-dot {
-          0%, 100% { opacity: 0.2; transform: scale(0.8); }
-          50%       { opacity: 1;   transform: scale(1);   }
-        }
-      `}</style>
-    </div>
-  );
-}
 
 const inputStyle = (filled: boolean) => ({
   background: "var(--bg-card)",
@@ -87,23 +33,43 @@ export default function CampaignPage() {
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState("Finding the right department...");
   const [error, setError] = useState<string | null>(null);
-  const [planMax, setPlanMax] = useState(20);
+  const [sliderMax, setSliderMax] = useState(20);
+  const [scoutingRemaining, setScoutingRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/usage")
       .then((r) => r.json())
-      .then((d: { plan: Plan }) => {
-        const max = PLAN_LIMITS[d.plan]?.searches ?? 20;
-        setPlanMax(max);
+      .then((d: { plan: Plan; searches_used: number }) => {
+        const planLimit = PLAN_LIMITS[d.plan]?.searches ?? 3;
+        const remaining = Math.max(0, planLimit - (d.searches_used ?? 0));
+        const max = Math.min(20, remaining);
+        setScoutingRemaining(remaining);
+        setSliderMax(max);
         if (contactCount > max) {
-          setDraft({ contactCount: max, rawCount: String(max) });
+          setDraft({ contactCount: Math.max(1, max), rawCount: String(Math.max(1, max)) });
         }
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ready = university.trim() && research.trim();
+  const noScoutingQuota = scoutingRemaining !== null && scoutingRemaining === 0;
+  const sliderAtCap = sliderMax < 20 && contactCount >= sliderMax && scoutingRemaining !== null;
+  const ready = university.trim() && research.trim() && !noScoutingQuota;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen gap-5">
+        <div className="flex items-center gap-2.5">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="block w-2 h-2 rounded-full" style={{ background: "var(--accent)", animation: `pulse-dot 1.2s ease-in-out ${i * 0.18}s infinite` }} />
+          ))}
+        </div>
+        <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>{progressMessage}</p>
+        <style>{`@keyframes pulse-dot { 0%, 100% { opacity: 0.2; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1); } }`}</style>
+      </div>
+    );
+  }
 
   const handleFindFaculty = async () => {
     if (!ready || loading) return;
@@ -282,7 +248,7 @@ export default function CampaignPage() {
               onChange={(e) => setDraft({ rawCount: e.target.value })}
               onBlur={() => {
                 const n = parseInt(rawCount, 10);
-                const clamped = isNaN(n) || n < 1 ? 1 : n > planMax ? planMax : n;
+                const clamped = isNaN(n) || n < 1 ? 1 : n > sliderMax ? sliderMax : n;
                 setDraft({ contactCount: clamped, rawCount: String(clamped) });
               }}
               className="text-3xl font-bold text-center w-14 rounded-lg bg-transparent border-0 focus:outline-none cursor-pointer"
@@ -292,7 +258,7 @@ export default function CampaignPage() {
           <input
             type="range"
             min={1}
-            max={planMax}
+            max={sliderMax > 0 ? sliderMax : 1}
             value={contactCount}
             onChange={(e) => {
               const n = Number(e.target.value);
@@ -301,10 +267,31 @@ export default function CampaignPage() {
             className="w-full cursor-pointer"
             style={{ accentColor: "var(--accent)" }}
           />
-          <p className="text-xs mt-3" style={{ color: "var(--ink-secondary)" }}>
-            Up to {planMax} researchers per campaign on your current plan.
-          </p>
+          <div className="flex items-center justify-between mt-3">
+            <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
+              Up to {sliderMax} researchers on your current plan.
+            </p>
+            {sliderAtCap && (
+              <p className="text-xs" style={{ color: "#678E8D" }}>
+                Scouting limit reached ({scoutingRemaining} credit{scoutingRemaining === 1 ? "" : "s"} remaining)
+              </p>
+            )}
+          </div>
         </div>
+
+        {noScoutingQuota && (
+          <div
+            className="rounded-xl p-5 mb-6 text-center"
+            style={{ background: "rgba(103,142,141,0.08)", border: "1px solid rgba(103,142,141,0.2)" }}
+          >
+            <p className="text-sm font-medium mb-1" style={{ color: "var(--ink)" }}>
+              No scouting credits remaining
+            </p>
+            <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
+              You have used all your professor scouting credits on your current plan. Upgrade to scout more professors.
+            </p>
+          </div>
+        )}
 
         {error && (
           <p className="text-xs mb-4 text-center" style={{ color: "#f87171" }}>{error}</p>
@@ -312,10 +299,10 @@ export default function CampaignPage() {
 
         <button
           onClick={handleFindFaculty}
-          disabled={!ready || loading}
+          disabled={!ready || loading || noScoutingQuota}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
           style={
-            ready && !loading
+            ready && !loading && !noScoutingQuota
               ? { background: "#678E8D", color: "#FFFFFF" }
               : { background: "#BBD2DD", color: "#FFFFFF" }
           }
@@ -325,7 +312,6 @@ export default function CampaignPage() {
         </button>
       </div>
 
-      <LoadingModal message={progressMessage} visible={loading} />
     </div>
   );
 }

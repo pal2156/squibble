@@ -30,6 +30,36 @@ function extractTextBody(payload: {
   return "";
 }
 
+function cleanReplyBody(text: string): string {
+  let cleaned = text.replace(
+    /ZjQcmQRY[a-zA-Z]+BannerStart[\s\S]*?ZjQcmQRY[a-zA-Z]+BannerEnd/g,
+    ""
+  );
+  cleaned = cleaned
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      return (
+        !t.includes("ZjQcmQRY") &&
+        !t.includes("This Message Is From an External Sender") &&
+        !t.includes("This message came from outside your organization")
+      );
+    })
+    .join("\n");
+  const quoteStartPatterns = [
+    /^On .+wrote:/m,
+    /^-{5}Original Message-{5}/m,
+    /^From: .+ Sent:/m,
+    /^>.*$/m,
+  ];
+  let cutIndex = cleaned.length;
+  for (const pattern of quoteStartPatterns) {
+    const match = pattern.exec(cleaned);
+    if (match !== null && match.index < cutIndex) cutIndex = match.index;
+  }
+  return cleaned.slice(0, cutIndex).replace(/\n{3,}/g, "\n\n").trim();
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const secret = searchParams.get("secret");
@@ -134,7 +164,7 @@ export async function GET(request: Request) {
   const { error: upsertErr } = await admin.from("replies").upsert(
     {
       email_id: emailRow.id,
-      body: replyBody,
+      body: cleanReplyBody(replyBody),
       classification,
       received_at: new Date().toISOString(),
     },

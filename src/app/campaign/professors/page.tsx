@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail, Building2, FlaskConical, GraduationCap } from "lucide-react";
 import type { Professor } from "@/lib/types";
 import { cleanDescription } from "@/lib/utils";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 function fitScoreStyle(score: number | null): { bg: string; text: string; border: string } {
   if (!score) return { bg: "rgba(103,142,141,0.1)", text: "#678E8D", border: "rgba(103,142,141,0.2)" };
@@ -151,6 +152,8 @@ function ProfessorsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailsRemaining, setEmailsRemaining] = useState<number | null>(null);
+  const [selectionLimitHit, setSelectionLimitHit] = useState(false);
 
   useEffect(() => {
     if (!campaignId) {
@@ -159,12 +162,19 @@ function ProfessorsContent() {
       return;
     }
 
-    fetch(`/api/professors?campaignId=${campaignId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) throw new Error(data.error);
-        setProfessors(data.professors ?? []);
-        setCampaignTitle(data.campaign?.title ?? "");
+    Promise.all([
+      fetch(`/api/professors?campaignId=${campaignId}`).then((r) => r.json()),
+      fetch("/api/usage").then((r) => r.json()),
+    ])
+      .then(([profData, usageData]) => {
+        if (profData.error) throw new Error(profData.error);
+        setProfessors(profData.professors ?? []);
+        setCampaignTitle(profData.campaign?.title ?? "");
+
+        const plan: Plan = usageData.plan ?? "free";
+        const limit = PLAN_LIMITS[plan].emails;
+        const used = usageData.emails_sent ?? 0;
+        setEmailsRemaining(Math.max(0, limit - used));
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -173,8 +183,17 @@ function ProfessorsContent() {
   const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+        setSelectionLimitHit(false);
+      } else {
+        if (emailsRemaining !== null && next.size >= emailsRemaining) {
+          setSelectionLimitHit(true);
+          return prev;
+        }
+        next.add(id);
+        setSelectionLimitHit(false);
+      }
       return next;
     });
   };
@@ -266,25 +285,41 @@ function ProfessorsContent() {
       </div>
 
       <div
-        className="sticky bottom-5 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border backdrop-blur-xl"
+        className="sticky bottom-5 rounded-xl border backdrop-blur-xl overflow-hidden"
         style={{ background: "rgba(60,83,82,0.97)", borderColor: "var(--border-default)", boxShadow: "0 -4px 20px rgba(103,142,141,0.12), 0 0 0 1px rgba(103,142,141,0.15)" }}
       >
-        <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
-          {selected.size === 0 ? "Select professors to continue" : `${selected.size} selected`}
-        </p>
-        <button
-          onClick={handleDraftEmails}
-          disabled={selected.size === 0 || saving}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-          style={
-            selected.size > 0 && !saving
-              ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(103,142,141,0.4)" }
-              : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
-          }
-        >
-          {saving ? "Saving..." : "Draft Emails"}
-          {!saving && <ArrowRight className="w-3.5 h-3.5" />}
-        </button>
+        {selectionLimitHit && (
+          <div className="px-4 pt-2.5 pb-0">
+            <p className="text-xs" style={{ color: "#678E8D" }}>
+              You can send up to {emailsRemaining} email{emailsRemaining === 1 ? "" : "s"} on your current plan. Deselect a professor to choose a different one.
+            </p>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-4 px-4 py-3">
+          <div>
+            <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
+              {selected.size === 0 ? "Select professors to continue" : `${selected.size} selected`}
+            </p>
+            {emailsRemaining !== null && (
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                {emailsRemaining} email credit{emailsRemaining === 1 ? "" : "s"} remaining
+              </p>
+            )}
+          </div>
+          <button
+            onClick={handleDraftEmails}
+            disabled={selected.size === 0 || saving}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+            style={
+              selected.size > 0 && !saving
+                ? { background: "var(--accent)", color: "#fff", boxShadow: "0 0 16px rgba(103,142,141,0.4)" }
+                : { background: "var(--bg-elevated)", color: "var(--ink-secondary)" }
+            }
+          >
+            {saving ? "Saving..." : `Draft ${selected.size > 0 ? selected.size + " " : ""}Email${selected.size !== 1 ? "s" : ""}`}
+            {!saving && <ArrowRight className="w-3.5 h-3.5" />}
+          </button>
+        </div>
       </div>
     </div>
   );

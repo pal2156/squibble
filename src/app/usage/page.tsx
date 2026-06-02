@@ -105,7 +105,7 @@ export default function UsagePage() {
         ) : (
           <div className="space-y-7">
             <UsageBar
-              label="Professor Searches"
+              label="Professors Scouted"
               used={data?.searches_used ?? 0}
               limit={limits.searches}
             />

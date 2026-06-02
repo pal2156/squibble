@@ -189,20 +189,40 @@ export default function ConversationsPage() {
   const [replyText, setReplyText] = useState("");
   const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
   const [loading, setLoading] = useState(true);
+  const initializedRef = useRef(false);
 
   const sorted = useMemo(() => sortConversations(conversations, sortOrder), [conversations, sortOrder]);
 
   useEffect(() => {
-    fetch("/api/conversations")
-      .then((r) => r.json())
-      .then(({ conversations: data }) => {
-        if (data && data.length > 0) {
+    let cancelled = false;
+
+    function fetchData() {
+      fetch("/api/conversations")
+        .then((r) => r.json())
+        .then(({ conversations: data }) => {
+          if (cancelled || !data) return;
           setConversations(data);
-          setSelected(data[0]);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+          if (!initializedRef.current) {
+            if (data.length > 0) setSelected(data[0]);
+            initializedRef.current = true;
+          } else {
+            setSelected((prev) =>
+              prev
+                ? ((data as SentEmail[]).find((c) => c.id === prev.id) ?? prev)
+                : (data[0] ?? null)
+            );
+          }
+        })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }
+
+    fetchData();
+    const intervalId = setInterval(fetchData, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
   }, []);
 
   function selectConversation(conv: SentEmail) {

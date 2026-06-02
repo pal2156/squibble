@@ -75,6 +75,13 @@ export async function GET(request: Request) {
       console.warn("[auth/callback] no provider_token or provider_refresh_token on session — Gmail tokens not saved. Check Google OAuth scopes and that access_type=offline + prompt=consent are set.");
     }
 
+    // Initialize plan to 'free' for new users who don't have one yet
+    await supabase
+      .from("users")
+      .update({ plan: "free" })
+      .eq("id", data.session.user.id)
+      .is("plan", null);
+
     // Register Gmail Pub/Sub watch so we receive reply notifications.
     // Use `origin` (the actual request origin) so this works in both local dev and
     // production on Vercel. Never use NEXT_PUBLIC_APP_URL here — it would point to

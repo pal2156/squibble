@@ -162,24 +162,34 @@ export async function POST(request: Request) {
 
     const gmail = getGmailClient(capturedGmailToken, capturedRefreshToken);
 
-    // --- history.list to find new inbox messages ---
+    // --- history.list to find new inbox messages (paginated) ---
     let newMessages: Array<{ id: string; threadId: string }> = [];
     try {
-      const historyRes = await gmail.users.history.list({
-        userId: "me",
-        startHistoryId,
-        historyTypes: ["messageAdded"],
-        labelId: "INBOX",
-      });
+      let pageToken: string | undefined;
+      let pagesFetched = 0;
+      const MAX_PAGES = 10;
+      do {
+        const historyRes = await gmail.users.history.list({
+          userId: "me",
+          startHistoryId,
+          historyTypes: ["messageAdded"],
+          labelId: "INBOX",
+          ...(pageToken ? { pageToken } : {}),
+        });
 
-      for (const record of historyRes.data.history ?? []) {
-        for (const added of record.messagesAdded ?? []) {
-          if (added.message?.id && added.message?.threadId) {
-            newMessages.push({ id: added.message.id, threadId: added.message.threadId });
+        for (const record of historyRes.data.history ?? []) {
+          for (const added of record.messagesAdded ?? []) {
+            if (added.message?.id && added.message?.threadId) {
+              newMessages.push({ id: added.message.id, threadId: added.message.threadId });
+            }
           }
         }
-      }
-      console.log(`[webhook/after] history.list returned ${newMessages.length} new message(s)`);
+
+        pageToken = historyRes.data.nextPageToken ?? undefined;
+        pagesFetched++;
+      } while (pageToken && pagesFetched < MAX_PAGES);
+
+      console.log(`[webhook/after] history.list returned ${newMessages.length} new message(s) across ${pagesFetched} page(s)`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`[webhook/after] history.list failed: ${msg} - nothing to process`);

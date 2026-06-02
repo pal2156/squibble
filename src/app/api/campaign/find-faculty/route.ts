@@ -73,17 +73,26 @@ export async function POST(request: Request) {
 
   const { data: userData } = await supabase
     .from("users")
-    .select("plan")
+    .select("plan, searches_used")
     .eq("id", user.id)
     .single();
 
   const plan = ((userData?.plan ?? "free") as Plan);
   const searchLimit = PLAN_LIMITS[plan].searches;
+  const searchesUsed = userData?.searches_used ?? 0;
+  const remaining = searchLimit - searchesUsed;
   const requestedCount = campaign.professor_count ?? 5;
 
-  if (requestedCount > searchLimit) {
+  if (remaining <= 0) {
     return new Response(
-      JSON.stringify({ error: `Your ${plan} plan allows up to ${searchLimit} professors per search.` }),
+      JSON.stringify({ error: "You have used all your professor scouting credits. Upgrade to scout more professors." }),
+      { status: 403 }
+    );
+  }
+
+  if (requestedCount > remaining) {
+    return new Response(
+      JSON.stringify({ error: `You only have ${remaining} scouting credit${remaining === 1 ? "" : "s"} remaining.` }),
       { status: 403 }
     );
   }
@@ -307,7 +316,10 @@ Return ONLY JSON: {"title": "..."}`,
 
         await supabase.from("campaigns").update({ title, status: "active" }).eq("id", campaignId);
 
-        await supabase.rpc("increment_searches_used", { uid: user.id });
+        await supabase
+          .from("users")
+          .update({ searches_used: searchesUsed + requestedCount })
+          .eq("id", user.id);
 
         controller.enqueue(sse({ type: "done", title }));
       } catch (err) {

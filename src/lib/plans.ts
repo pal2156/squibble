@@ -1,6 +1,6 @@
 export const PLAN_LIMITS = {
   free: { searches: 3, emails: 2 },
-  pro: { searches: 30, emails: 25 },
+  pro: { searches: 30, emails: 30 },
   max: { searches: 75, emails: 75 },
 } as const;
 

@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
-  const { priceId } = await request.json();
+  const { priceId, plan } = await request.json();
   const { origin } = new URL(request.url);
 
-  if (!priceId) {
-    return NextResponse.json({ error: "priceId is required" }, { status: 400 });
+  if (!priceId || !plan) {
+    return NextResponse.json({ error: "priceId and plan are required" }, { status: 400 });
+  }
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
@@ -15,7 +22,9 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard?payment=success`,
+      client_reference_id: user.id,
+      metadata: { plan, userId: user.id },
+      success_url: `${origin}/dashboard`,
       cancel_url: `${origin}/dashboard`,
     });
 

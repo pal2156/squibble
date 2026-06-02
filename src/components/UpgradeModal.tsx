@@ -66,7 +66,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceId }),
+        body: JSON.stringify({ priceId, plan: planName.toLowerCase() }),
       });
       if (!res.ok) {
         throw new Error(`Checkout failed (${res.status})`);

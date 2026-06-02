@@ -47,8 +47,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Authenticated users visiting the landing page go straight to the dashboard
-  if (user && pathname === "/") {
+  // Authenticated users visiting the landing page or pricing page go straight to the dashboard
+  if (user && (pathname === "/" || pathname === "/pricing")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

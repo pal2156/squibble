@@ -1,8 +1,13 @@
 {
+  "functions": {
+    "src/app/api/gmail/webhook/route.ts": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/renew-watch",
-      "schedule": "0 0 */6 * *"
+      "schedule": "0 0 */5 * *"
     }
   ]
 }

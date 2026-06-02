@@ -23,12 +23,13 @@ export async function POST(request: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const userId = session.client_reference_id;
-    const plan = session.metadata?.plan as "pro" | "max" | undefined;
+    const userId = session.metadata?.userId ?? session.client_reference_id;
+    const rawPlan = session.metadata?.plan;
+    const plan = rawPlan?.toLowerCase() as "pro" | "max" | undefined;
     const customerId = typeof session.customer === "string" ? session.customer : null;
 
     if (!userId || !plan || !["pro", "max"].includes(plan)) {
-      console.error("[stripe/webhook] missing user ID or invalid plan:", { userId, plan });
+      console.error("[stripe/webhook] missing user ID or invalid plan:", { userId, rawPlan, plan });
       return NextResponse.json({ received: true });
     }
 

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const priceId = plan ? PRICE_IDS[plan] : null;
 
   if (!priceId || !plan) {
-    return NextResponse.redirect(`${origin}/pricing`);
+    return NextResponse.redirect(`${origin}/dashboard`);
   }
 
   try {
@@ -22,8 +22,8 @@ export async function GET(request: Request) {
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard?payment=success`,
-      cancel_url: `${origin}/pricing`,
+      success_url: `${origin}/dashboard`,
+      cancel_url: `${origin}/dashboard`,
       metadata: { plan },
     };
 
@@ -32,6 +32,7 @@ export async function GET(request: Request) {
 
     if (user) {
       sessionParams.client_reference_id = user.id;
+      sessionParams.metadata = { plan, userId: user.id };
 
       const { data: userData } = await supabase
         .from("users")
@@ -49,12 +50,12 @@ export async function GET(request: Request) {
     const session = await stripe.checkout.sessions.create(sessionParams);
 
     if (!session.url) {
-      return NextResponse.redirect(`${origin}/pricing`);
+      return NextResponse.redirect(`${origin}/dashboard`);
     }
 
     return NextResponse.redirect(session.url);
   } catch (err) {
     console.error("[stripe/redirect] failed to create checkout session:", err);
-    return NextResponse.redirect(`${origin}/pricing`);
+    return NextResponse.redirect(`${origin}/dashboard`);
   }
 }

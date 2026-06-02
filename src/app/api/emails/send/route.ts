@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   // Load email, user's Gmail credentials, and profile (for CV attachment)
   const [{ data: email }, { data: userData }, { data: profileData }] = await Promise.all([
     supabase.from("emails").select("*").eq("id", emailId).eq("user_id", user.id).single(),
-    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name, plan").eq("id", user.id).single(),
+    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name, plan, emails_sent").eq("id", user.id).single(),
     supabase.from("profiles").select("cv_text, cv_filename").eq("user_id", user.id).single(),
   ]);
 
@@ -36,24 +36,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Email not found" }, { status: 404 });
   }
 
-  // Enforce send cap: count emails already sent for this campaign
+  // Enforce global send cap across all campaigns
   const plan = ((userData as { plan?: string } | null)?.plan ?? "free") as Plan;
   const sendLimit = PLAN_LIMITS[plan].emails;
+  const emailsUsed = (userData as { emails_sent?: number } | null)?.emails_sent ?? 0;
 
-  if (email.campaign_id) {
-    const { count: sentCount } = await supabase
-      .from("emails")
-      .select("id", { count: "exact", head: true })
-      .eq("campaign_id", email.campaign_id)
-      .eq("status", "sent");
-
-    if ((sentCount ?? 0) >= sendLimit) {
-      console.log(`[send] send cap reached: ${sentCount}/${sendLimit} for campaign ${email.campaign_id} (plan: ${plan})`);
-      return NextResponse.json(
-        { error: `Send limit of ${sendLimit} emails reached for your ${plan} plan.` },
-        { status: 429 }
-      );
-    }
+  if (emailsUsed >= sendLimit) {
+    console.log(`[send] global send cap reached: ${emailsUsed}/${sendLimit} (plan: ${plan})`);
+    return NextResponse.json(
+      { error: `Email limit of ${sendLimit} reached for your ${plan} plan. Upgrade to send more.` },
+      { status: 429 }
+    );
   }
 
   if (!userData?.gmail_token) {
