@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, HAIKU } from "@/lib/anthropic";
 
 export async function POST(request: Request) {
   console.log("[parse-cv] route hit");
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
     console.log("[parse-cv] calling Claude...");
     const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
+      model: HAIKU,
       max_tokens: 2048,
       system: `You are extracting information from a student resume to populate a research outreach profile. Return only a valid JSON object with no preamble, no explanation, and no markdown code blocks. Use exactly this structure:
 

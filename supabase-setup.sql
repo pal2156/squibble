@@ -166,7 +166,10 @@ alter table public.users add column if not exists plan text default 'free';
 alter table public.users add column if not exists searches_used int default 0;
 alter table public.users add column if not exists emails_sent int default 0;
 
--- 13. Atomic increment helpers (used by API routes)
+-- 13. Stripe customer tracking
+alter table public.users add column if not exists stripe_customer_id text;
+
+-- 14. Atomic increment helpers (used by API routes)
 create or replace function increment_searches_used(uid uuid)
 returns void language sql security definer as $$
   update public.users set searches_used = coalesce(searches_used, 0) + 1 where id = uid;

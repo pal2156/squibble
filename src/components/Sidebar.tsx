@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
@@ -8,12 +8,21 @@ import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import UpgradeModal from "./UpgradeModal";
 
-const navItems = [
+const UsageIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+    <path d="M1 15.5L1 13Q1 11.5 2.5 11.5L3.5 11.5Q5 11.5 5 13L5 15.5" stroke="#3C5352" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M7 15.5L7 9Q7 7.5 8.5 7.5L9.5 7.5Q11 7.5 11 9L11 15.5" stroke="#3C5352" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <rect x="13" y="3.5" width="4" height="12" rx="1.5" fill="#678E8D" fillOpacity="0.55" stroke="#3C5352" strokeWidth="1.2"/>
+    <line x1="0.5" y1="16" x2="17.5" y2="16" stroke="#3C5352" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+
+const navItems: { href: string; label: string; iconSrc?: string; iconElement?: ReactNode }[] = [
   { href: "/dashboard", label: "Dashboard", iconSrc: "/icons/dashboard.png" },
   { href: "/conversations", label: "Conversations", iconSrc: "/icons/conversations.png" },
   { href: "/campaign", label: "New Campaign", iconSrc: "/icons/new-campaign.png" },
   { href: "/profile", label: "Profile", iconSrc: "/icons/profile.png" },
-  { href: "/usage", label: "Usage", iconSrc: "/icons/campaigns-run.png" },
+  { href: "/usage", label: "Usage", iconElement: <UsageIcon /> },
 ];
 
 const bottomNavItems = [
@@ -159,7 +168,7 @@ export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps
 
         {/* Nav */}
         <nav className="flex-1 px-2 space-y-0.5">
-          {navItems.map(({ href, label, iconSrc }) => {
+          {navItems.map(({ href, label, iconSrc, iconElement }) => {
             const active = isActive(href);
             return (
               <Link
@@ -187,13 +196,15 @@ export default function Sidebar({ open, onToggle, onSettingsOpen }: SidebarProps
                   }
                 }}
               >
-                <Image
-                  src={iconSrc}
-                  alt={label}
-                  width={18}
-                  height={18}
-                  className="flex-shrink-0"
-                />
+                {iconElement ?? (
+                  <Image
+                    src={iconSrc!}
+                    alt={label}
+                    width={18}
+                    height={18}
+                    className="flex-shrink-0"
+                  />
+                )}
                 {open && (
                   <span style={{ whiteSpace: "nowrap" }}>{label}</span>
                 )}

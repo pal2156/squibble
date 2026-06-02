@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, SONNET } from "@/lib/anthropic";
 
 const SUBJECT_LINES = [
   "Undergraduate Research Inquiry",
@@ -75,32 +75,21 @@ export async function POST(request: Request) {
 
   const subject = SUBJECT_LINES[Math.floor(Math.random() * SUBJECT_LINES.length)];
 
-  const emailRows: Array<{
-    user_id: string;
-    campaign_id: string;
-    professor_id: string;
-    professor_name: string;
-    university: string | null;
-    department: string | null;
-    subject: string;
-    body: string;
-    status: string;
-  }> = [];
+  const results = await Promise.all(
+    professors.map(async (prof) => {
+      const profUniversity = prof.university ?? campaign.university ?? "";
+      const profResearch = prof.description ?? "(no research description found)";
+      const profTitle = prof.title ?? "";
 
-  for (const prof of professors) {
-    const profUniversity = prof.university ?? campaign.university ?? "";
-    const profResearch = prof.description ?? "(no research description found)";
-    const profTitle = prof.title ?? "";
+      const compensationInstruction = campaign.position_type === "paid"
+        ? "Work in naturally that the student is looking for a paid research position. Do not make it sound like a demand or a condition."
+        : "Do not mention compensation, pay, or whether the position is paid or unpaid at all.";
 
-    const compensationInstruction = campaign.position_type === "paid"
-      ? "Work in naturally that the student is looking for a paid research position. Do not make it sound like a demand or a condition."
-      : "Do not mention compensation, pay, or whether the position is paid or unpaid at all.";
+      const cvInstruction = isPathA
+        ? "Near the end of the email, include a brief natural mention that the student has attached their CV for reference."
+        : "Do not mention a CV or any attachment.";
 
-    const cvInstruction = isPathA
-      ? "Near the end of the email, include a brief natural mention that the student has attached their CV for reference."
-      : "Do not mention a CV or any attachment.";
-
-    const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. The email must be under 200 words and consist of exactly four short paragraphs.
+      const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. The email must be under 200 words and consist of exactly four short paragraphs.
 
 Paragraph structure:
 
@@ -129,47 +118,62 @@ Sign off with "Best regards," and the student's full name.
 Do not generate a subject line. Only write the body starting with "Dear Professor [last name]," or "Dear Dr. [last name]," depending on their title.
 Output plain text only. Use line breaks between paragraphs. No markdown, no JSON.`;
 
-    const userMessage = `Student profile:
-${studentContext}
+      try {
+        const response = await anthropic.messages.create({
+          model: SONNET,
+          max_tokens: 1024,
+          system: [
+            {
+              type: "text",
+              text: systemPrompt,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Student profile:\n${studentContext}\n\nCampaign context:\n${campaignContext}`,
+                  cache_control: { type: "ephemeral" },
+                },
+                {
+                  type: "text",
+                  text: `Professor: ${prof.name}, ${prof.department ?? "(department unknown)"}, ${profUniversity}\nTitle: ${profTitle || "(not provided)"}\nResearch focus: ${profResearch}`,
+                },
+              ],
+            },
+          ],
+        });
 
-Campaign context:
-${campaignContext}
+        const body = response.content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as { type: "text"; text: string }).text)
+          .join("")
+          .trim();
 
-Professor: ${prof.name}, ${prof.department ?? "(department unknown)"}, ${profUniversity}
-Title: ${profTitle || "(not provided)"}
-Research focus: ${profResearch}`;
+        if (!body) throw new Error("Empty response from Claude");
 
-    try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMessage }],
-      });
+        return {
+          user_id: user.id,
+          campaign_id: campaignId,
+          professor_id: prof.id,
+          professor_name: prof.name,
+          university: profUniversity || null,
+          department: prof.department,
+          subject,
+          body,
+          status: "draft",
+        };
+      } catch (err) {
+        console.error(`Email draft failed for ${prof.name}:`, err instanceof Error ? err.message : err);
+        return null;
+      }
+    })
+  );
 
-      const body = response.content
-        .filter((b) => b.type === "text")
-        .map((b) => (b as { type: "text"; text: string }).text)
-        .join("")
-        .trim();
-
-      if (!body) throw new Error("Empty response from Claude");
-
-      emailRows.push({
-        user_id: user.id,
-        campaign_id: campaignId,
-        professor_id: prof.id,
-        professor_name: prof.name,
-        university: profUniversity || null,
-        department: prof.department,
-        subject,
-        body,
-        status: "draft",
-      });
-    } catch (err) {
-      console.error(`Email draft failed for ${prof.name}:`, err instanceof Error ? err.message : err);
-    }
-  }
+  const emailRows = results.filter((r) => r !== null);
 
   if (emailRows.length === 0) {
     return NextResponse.json({ error: "Failed to generate any drafts" }, { status: 500 });

@@ -1,12 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, extractJsonString, parseClaudeJson } from "@/lib/anthropic";
+import { anthropic, extractJsonString, parseClaudeJson, SONNET, HAIKU } from "@/lib/anthropic";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 const encoder = new TextEncoder();
-
-// Sonnet: reasoning-heavy tasks (web search strategy, professor ranking, email drafting)
-const SONNET = "claude-sonnet-4-6";
-// Haiku: mechanical tasks (data extraction, title generation, JSON reformatting, profile reads)
-const HAIKU = "claude-haiku-4-5";
 
 function sse(data: object): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
@@ -75,6 +71,23 @@ export async function POST(request: Request) {
     return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
   }
 
+  const { data: userData } = await supabase
+    .from("users")
+    .select("plan")
+    .eq("id", user.id)
+    .single();
+
+  const plan = ((userData?.plan ?? "free") as Plan);
+  const searchLimit = PLAN_LIMITS[plan].searches;
+  const requestedCount = campaign.professor_count ?? 5;
+
+  if (requestedCount > searchLimit) {
+    return new Response(
+      JSON.stringify({ error: `Your ${plan} plan allows up to ${searchLimit} professors per search.` }),
+      { status: 403 }
+    );
+  }
+
   const stream = new ReadableStream({
     async start(controller) {
       try {
@@ -85,7 +98,7 @@ export async function POST(request: Request) {
 
         const step123Res = await anthropic.messages.create({
           model: SONNET,
-          max_tokens: 16000,
+          max_tokens: 8192,
           tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
           system:
             "You are a research assistant building professor lists for student outreach. Return ONLY a valid JSON array with no markdown fences, no prose, no explanation.",
@@ -182,7 +195,7 @@ If absolutely no professors had enough information, return [].`,
 
         const step4Res = await anthropic.messages.create({
           model: SONNET,
-          max_tokens: 8192,
+          max_tokens: 4096,
           system: "You rank professors for student research outreach. Return ONLY a valid JSON array, no text, no explanation.",
           messages: [
             {

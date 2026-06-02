@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, HAIKU } from "@/lib/anthropic";
 import { getGmailClient } from "@/lib/gmail";
 import { createClient } from "@supabase/supabase-js";
 
@@ -245,7 +245,7 @@ export async function POST(request: Request) {
       let classification: "positive" | "negative" = "positive";
       try {
         const classRes = await anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
+          model: HAIKU,
           max_tokens: 10,
           messages: [
             {

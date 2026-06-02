@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getGmailClient } from "@/lib/gmail";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, HAIKU } from "@/lib/anthropic";
 
 // Bulk backfill: checks every sent email thread for a professor reply, classifies it,
 // and writes the result to the DB. Call GET /api/admin/backfill-replies from the browser
@@ -138,7 +138,7 @@ export async function GET() {
       let classification: "positive" | "negative" = "positive";
       try {
         const classRes = await anthropic.messages.create({
-          model: "claude-haiku-4-5-20251001",
+          model: HAIKU,
           max_tokens: 10,
           messages: [
             {

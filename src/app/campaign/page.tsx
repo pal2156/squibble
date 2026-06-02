@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { useCampaignDraft } from "@/components/CampaignDraftContext";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 function LoadingModal({
   message,
@@ -86,6 +87,21 @@ export default function CampaignPage() {
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState("Finding the right department...");
   const [error, setError] = useState<string | null>(null);
+  const [planMax, setPlanMax] = useState(20);
+
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((d: { plan: Plan }) => {
+        const max = PLAN_LIMITS[d.plan]?.searches ?? 20;
+        setPlanMax(max);
+        if (contactCount > max) {
+          setDraft({ contactCount: max, rawCount: String(max) });
+        }
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ready = university.trim() && research.trim();
 
@@ -266,7 +282,7 @@ export default function CampaignPage() {
               onChange={(e) => setDraft({ rawCount: e.target.value })}
               onBlur={() => {
                 const n = parseInt(rawCount, 10);
-                const clamped = isNaN(n) || n < 1 ? 1 : n > 20 ? 20 : n;
+                const clamped = isNaN(n) || n < 1 ? 1 : n > planMax ? planMax : n;
                 setDraft({ contactCount: clamped, rawCount: String(clamped) });
               }}
               className="text-3xl font-bold text-center w-14 rounded-lg bg-transparent border-0 focus:outline-none cursor-pointer"
@@ -276,7 +292,7 @@ export default function CampaignPage() {
           <input
             type="range"
             min={1}
-            max={20}
+            max={planMax}
             value={contactCount}
             onChange={(e) => {
               const n = Number(e.target.value);
@@ -286,7 +302,7 @@ export default function CampaignPage() {
             style={{ accentColor: "var(--accent)" }}
           />
           <p className="text-xs mt-3" style={{ color: "var(--ink-secondary)" }}>
-            Up to 20 researchers per campaign.
+            Up to {planMax} researchers per campaign on your current plan.
           </p>
         </div>
 

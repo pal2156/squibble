@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Pencil, SkipForward, Send, Building2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Email } from "@/lib/types";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 type EmailState = "pending" | "approved" | "skipped";
 type CardPhase = "idle" | "sent" | "exiting" | "entering";
@@ -29,6 +30,7 @@ function ApprovalContent() {
   const [loadingDrafts, setLoadingDrafts] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendLimit, setSendLimit] = useState<number>(Infinity);
 
   useEffect(() => {
     if (!campaignId) {
@@ -72,6 +74,15 @@ function ApprovalContent() {
 
     loadDrafts();
   }, [campaignId]);
+
+  useEffect(() => {
+    fetch("/api/usage")
+      .then((r) => r.json())
+      .then((d: { plan: Plan }) => {
+        setSendLimit(PLAN_LIMITS[d.plan]?.emails ?? Infinity);
+      })
+      .catch(() => {});
+  }, []);
 
   // Animates the current card out, then advances to the next card (or done screen).
   const advanceCard = useCallback((nextIndex: number, isLast: boolean) => {
@@ -152,9 +163,11 @@ function ApprovalContent() {
   const email = emails[current];
   const reviewed = Object.values(states).filter((s) => s !== "pending").length;
   const total = emails.length;
+  const approvedCount = Object.values(states).filter((s) => s === "approved").length;
+  const atSendLimit = approvedCount >= sendLimit;
 
   const handleApprove = async () => {
-    if (!email || cardPhase !== "idle" || sendingId) return;
+    if (!email || cardPhase !== "idle" || sendingId || atSendLimit) return;
     const isLast = current >= emails.length - 1;
     setSendingId(email.id);
 
@@ -223,7 +236,9 @@ function ApprovalContent() {
 
   const handleApproveAll = async () => {
     const pending = emails.filter((e) => states[e.id] === "pending");
+    let approvedSoFar = approvedCount;
     for (const e of pending) {
+      if (approvedSoFar >= sendLimit) break;
       try {
         const res = await fetch("/api/emails/send", {
           method: "POST",
@@ -236,6 +251,7 @@ function ApprovalContent() {
         } else {
           console.log("[approveAll] sent", e.id, data);
           setStates((prev) => ({ ...prev, [e.id]: "approved" }));
+          approvedSoFar++;
         }
       } catch (err) {
         console.error("[approveAll] network error for", e.id, err);
@@ -447,15 +463,25 @@ function ApprovalContent() {
         </div>
       </div>
 
+      {/* Send limit banner */}
+      {atSendLimit && cardPhase === "idle" && editing !== email.id && (
+        <div
+          className="mt-4 px-4 py-3 rounded-xl text-xs font-medium text-center"
+          style={{ background: "rgba(103,142,141,0.08)", color: "var(--ink-secondary)", border: "1px solid rgba(103,142,141,0.18)" }}
+        >
+          Send limit reached for your plan. Upgrade to send more emails.
+        </div>
+      )}
+
       {/* Actions — shown only when idle and not editing */}
       {cardPhase === "idle" && editing !== email.id && (
         <div className="flex items-center gap-2.5 mt-4 animate-slide-up">
           <button
             onClick={handleApprove}
-            disabled={!!sendingId}
-            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-60"
+            disabled={!!sendingId || atSendLimit}
+            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "rgba(103,142,141,0.1)", color: "#678E8D", border: "1px solid rgba(103,142,141,0.2)" }}
-            onMouseEnter={(e) => { if (!sendingId) { e.currentTarget.style.background = "rgba(103,142,141,0.18)"; } }}
+            onMouseEnter={(e) => { if (!sendingId && !atSendLimit) { e.currentTarget.style.background = "rgba(103,142,141,0.18)"; } }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(103,142,141,0.1)"; }}
           >
             <Check className="w-3.5 h-3.5" strokeWidth={2.5} />

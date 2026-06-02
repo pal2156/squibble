@@ -1,14 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-const PLAN_LIMITS = {
-  free: { searches: 3, emails: 2 },
-  pro: { searches: 30, emails: 30 },
-  max: { searches: 75, emails: 75 },
-} as const;
-
-type Plan = keyof typeof PLAN_LIMITS;
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 interface UsageData {
   plan: Plan;
@@ -76,9 +69,6 @@ export default function UsagePage() {
         <h1 className="text-xl font-semibold mb-1" style={{ color: "#232C33" }}>
           Usage
         </h1>
-        <p className="text-sm" style={{ color: "#3C5352" }}>
-          Lifetime credits used on your current plan.
-        </p>
       </div>
 
       <div

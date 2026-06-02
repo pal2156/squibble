@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getGmailClient, buildMimeMessage } from "@/lib/gmail";
+import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 export async function POST(request: Request) {
   console.log("[send] handler invoked");
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
   // Load email, user's Gmail credentials, and profile (for CV attachment)
   const [{ data: email }, { data: userData }, { data: profileData }] = await Promise.all([
     supabase.from("emails").select("*").eq("id", emailId).eq("user_id", user.id).single(),
-    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name").eq("id", user.id).single(),
+    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name, plan").eq("id", user.id).single(),
     supabase.from("profiles").select("cv_text, cv_filename").eq("user_id", user.id).single(),
   ]);
 
@@ -34,6 +35,27 @@ export async function POST(request: Request) {
     console.error("[send] email row not found for id:", emailId);
     return NextResponse.json({ error: "Email not found" }, { status: 404 });
   }
+
+  // Enforce send cap: count emails already sent for this campaign
+  const plan = ((userData as { plan?: string } | null)?.plan ?? "free") as Plan;
+  const sendLimit = PLAN_LIMITS[plan].emails;
+
+  if (email.campaign_id) {
+    const { count: sentCount } = await supabase
+      .from("emails")
+      .select("id", { count: "exact", head: true })
+      .eq("campaign_id", email.campaign_id)
+      .eq("status", "sent");
+
+    if ((sentCount ?? 0) >= sendLimit) {
+      console.log(`[send] send cap reached: ${sentCount}/${sendLimit} for campaign ${email.campaign_id} (plan: ${plan})`);
+      return NextResponse.json(
+        { error: `Send limit of ${sendLimit} emails reached for your ${plan} plan.` },
+        { status: 429 }
+      );
+    }
+  }
+
   if (!userData?.gmail_token) {
     console.error("[send] gmail_token is null/missing for user:", user.id, "— user must re-authenticate");
     return NextResponse.json({ error: "Gmail not connected. Please sign in again." }, { status: 403 });

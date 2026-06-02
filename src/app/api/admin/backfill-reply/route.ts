@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getGmailClient } from "@/lib/gmail";
-import { anthropic } from "@/lib/anthropic";
+import { anthropic, HAIKU } from "@/lib/anthropic";
 
 // One-off admin route: backfill a missed professor reply by thread_id.
 // Call as: GET /api/admin/backfill-reply?thread_id=XXX&user_id=YYY&secret=CRON_SECRET
@@ -112,7 +112,7 @@ export async function GET(request: Request) {
   let classification: "positive" | "negative" = "positive";
   try {
     const classRes = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: HAIKU,
       max_tokens: 10,
       messages: [
         {

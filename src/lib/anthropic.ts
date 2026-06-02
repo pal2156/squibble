@@ -5,6 +5,9 @@ export const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+export const SONNET = "claude-sonnet-4-6";
+export const HAIKU = "claude-haiku-4-5-20251001";
+
 // Walks a string to find the first balanced JSON object or array
 export function extractJsonString(text: string): string | null {
   const starts = [text.indexOf("{"), text.indexOf("[")].filter((i) => i !== -1);
