@@ -2,6 +2,17 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+
+  // If Supabase fell back to the site root with an OAuth code, forward to the
+  // real callback route. This check must run before getUser() so a Supabase
+  // cold-start or timeout cannot prevent the redirect.
+  if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/callback";
+    return NextResponse.redirect(url);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -29,16 +40,6 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const pathname = request.nextUrl.pathname;
-
-  // If Supabase fell back to the site root with an OAuth code, forward to the
-  // real callback route before the landing page renders.
-  if (pathname === "/" && request.nextUrl.searchParams.has("code")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth/callback";
-    return NextResponse.redirect(url);
-  }
 
   // "/", "/pricing", "/privacy", "/terms", "/about" are public; "/auth/*" is the OAuth callback
   const isPublicRoute =

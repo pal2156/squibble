@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import WorkflowDiagram from "@/components/WorkflowDiagram";
+import { CodeRedirectHandler } from "@/components/CodeRedirectHandler";
 import "./landing.css";
 
 // ─── Google OAuth ──────────────────────────────────────────────
@@ -376,6 +377,7 @@ export default function LandingPage() {
 
   return (
     <div className="lp-page">
+      <CodeRedirectHandler />
       <Nav />
 
       {/* HERO */}
