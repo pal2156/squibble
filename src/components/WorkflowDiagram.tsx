@@ -206,6 +206,13 @@ export default function WorkflowDiagram() {
               stroke="#678E8D" strokeWidth="2.5" strokeLinecap="round"
               style={{ opacity: 0 }} />
 
+        {/* comet — rendered before stations so it appears behind them */}
+        <g data-comet="" style={{ opacity: 0 }}>
+          <circle r="11" fill="#678E8D" opacity="0.16" filter="url(#wd-comet-glow)" />
+          <circle r="6"  fill="#678E8D" opacity="0.9" />
+          <circle r="2.6" fill="#FFFFFF" />
+        </g>
+
         {/* stations */}
         {STATIONS.map((s, i) => (
           <g key={i} data-station={i} transform={`translate(${s.x} ${s.y})`}>
@@ -227,13 +234,6 @@ export default function WorkflowDiagram() {
                   style={{ fontFamily: 'inherit', opacity: 0.55 }}>{s.label}</text>
           </g>
         ))}
-
-        {/* comet */}
-        <g data-comet="" style={{ opacity: 0 }}>
-          <circle r="11" fill="#678E8D" opacity="0.16" filter="url(#wd-comet-glow)" />
-          <circle r="6"  fill="#678E8D" opacity="0.9" />
-          <circle r="2.6" fill="#FFFFFF" />
-        </g>
       </svg>
     </div>
   );

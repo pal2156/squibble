@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { ChevronRight, X } from "lucide-react";
 import Image from "next/image";
 import { ChartRow } from "@/components/ChartRow";
@@ -93,31 +94,57 @@ export default function DashboardPage() {
     fetch(`/api/stripe/verify-session?session_id=${sessionId}`).catch(() => {});
   }, [router]);
 
+  const fetchData = useCallback(() => {
+    fetch("/api/dashboard")
+      .then((r) => r.json())
+      .then(({ emails }) => {
+        if (!emails) return;
+        setSentEmails(emails);
+        setSelectedEmail((prev) => {
+          if (!prev) return null;
+          return (emails as SentEmail[]).find((e) => e.id === prev.id) ?? prev;
+        });
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Initial load + 30-second poll fallback
   useEffect(() => {
-    let cancelled = false;
-
-    function fetchData() {
-      fetch("/api/dashboard")
-        .then((r) => r.json())
-        .then(({ emails }) => {
-          if (cancelled || !emails) return;
-          setSentEmails(emails);
-          setSelectedEmail((prev) => {
-            if (!prev) return null;
-            return (emails as SentEmail[]).find((e) => e.id === prev.id) ?? prev;
-          });
-        })
-        .catch(() => {})
-        .finally(() => { if (!cancelled) setLoading(false); });
-    }
-
     fetchData();
     const intervalId = setInterval(fetchData, 30_000);
+    return () => clearInterval(intervalId);
+  }, [fetchData]);
+
+  // Supabase Realtime: re-fetch the moment an emails row changes so the
+  // dashboard reflects a reply without waiting for the next poll cycle.
+  useEffect(() => {
+    const supabase = createClient();
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      channel = supabase
+        .channel(`emails-${user.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "emails",
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            fetchData();
+          }
+        )
+        .subscribe();
+    });
+
     return () => {
-      cancelled = true;
-      clearInterval(intervalId);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, []);
+  }, [fetchData]);
 
   const totalSent = sentEmails.length;
   const positiveReplies = sentEmails.filter((e) => e.status === "Positive Reply").length;

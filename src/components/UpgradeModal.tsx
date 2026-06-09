@@ -19,7 +19,6 @@ const PLANS = [
       "30 professor searches",
       "30 personalized emails",
     ],
-    priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO ?? "price_1Tdd5F2fASOksRg20N4gCDgC",
   },
   {
     name: "PLUS",
@@ -32,7 +31,6 @@ const PLANS = [
       "75 professor searches",
       "75 personalized emails",
     ],
-    priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX ?? "price_1Tdd5k2fASOksRg2Z9WHMbkG",
   },
 ];
 
@@ -40,14 +38,14 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  async function handleCheckout(priceId: string, planKey: string) {
+  async function handleCheckout(planKey: string) {
     setLoadingPlan(planKey);
     setCheckoutError(null);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceId, plan: planKey }),
+        body: JSON.stringify({ plan: planKey }),
       });
       if (!res.ok) {
         throw new Error(`Checkout failed (${res.status})`);
@@ -176,9 +174,9 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
 
               <button
                 onClick={() => {
-                  if (plan.priceId) handleCheckout(plan.priceId, plan.planKey);
+                  handleCheckout(plan.planKey);
                 }}
-                disabled={!plan.priceId || loadingPlan === plan.planKey}
+                disabled={loadingPlan === plan.planKey}
                 className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
                 style={{ background: "var(--accent)", color: "#fff" }}
                 onMouseEnter={(e) => {

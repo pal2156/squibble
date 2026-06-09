@@ -2,12 +2,23 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 
+const PLAN_PRICE_IDS: Record<string, string | undefined> = {
+  pro: process.env.STRIPE_PRICE_PRO ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO,
+  max: process.env.STRIPE_PRICE_MAX ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX,
+};
+
 export async function POST(request: Request) {
-  const { priceId, plan } = await request.json();
+  const { plan } = await request.json();
   const { origin } = new URL(request.url);
 
-  if (!priceId || !plan) {
-    return NextResponse.json({ error: "priceId and plan are required" }, { status: 400 });
+  if (!plan || !["pro", "max"].includes(plan)) {
+    return NextResponse.json({ error: "plan must be 'pro' or 'max'" }, { status: 400 });
+  }
+
+  const priceId = PLAN_PRICE_IDS[plan];
+  if (!priceId) {
+    console.error(`[stripe/checkout] price ID for plan "${plan}" is not configured`);
+    return NextResponse.json({ error: "Plan price is not configured" }, { status: 500 });
   }
 
   const stripeKey = process.env.STRIPE_SECRET_KEY;

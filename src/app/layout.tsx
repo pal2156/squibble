@@ -23,6 +23,14 @@ export default function RootLayout({
   return (
     <html lang="en" className={dmSans.variable}>
       <body>
+        {/* next/font skips font preload in dev builds; React 19 hoists this to <head> so DM Sans loads before text renders, matching production. */}
+        <link
+          rel="preload"
+          href="/_next/static/media/13971731025ec697-s.p.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin=""
+        />
         <LayoutShell>{children}</LayoutShell>
       </body>
     </html>

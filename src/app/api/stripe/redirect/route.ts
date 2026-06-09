@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 
-const PRICE_IDS: Record<string, string> = {
-  pro: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO ?? "price_1Tdd5F2fASOksRg20N4gCDgC",
-  max: process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX ?? "price_1Tdd5k2fASOksRg2Z9WHMbkG",
+const PRICE_IDS: Record<string, string | undefined> = {
+  pro: process.env.STRIPE_PRICE_PRO ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO,
+  max: process.env.STRIPE_PRICE_MAX ?? process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX,
 };
 
 export async function GET(request: Request) {
@@ -14,8 +14,8 @@ export async function GET(request: Request) {
 
   console.log("[stripe/redirect] hit — plan:", plan, "priceId:", priceId);
 
-  if (!priceId || !plan) {
-    console.error("[stripe/redirect] missing plan or priceId — redirecting to dashboard");
+  if (!plan || !priceId) {
+    console.error(`[stripe/redirect] plan="${plan}" has no configured price ID — check STRIPE_PRICE_PRO / STRIPE_PRICE_MAX env vars`);
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 

@@ -10,17 +10,20 @@ export async function GET(request: Request) {
   const googleError = searchParams.get("error");
 
   // Determine post-auth destination.
-  // Prefer ?plan= embedded in the redirect URL; fall back to the cookie
-  // set before OAuth in case Supabase strips query params from redirectTo.
-  const urlPlan = searchParams.get("plan");
+  // Primary: ?next= embedded in the redirectTo URL (set by signInWithOAuth in the pricing page).
+  // Fallback: squibble_plan_intent cookie set before the OAuth redirect.
+  const rawNext = searchParams.get("next");
   const cookieStore = await cookies();
   const cookiePlan = cookieStore.get("squibble_plan_intent")?.value;
-  const plan = (urlPlan === "pro" || urlPlan === "max") ? urlPlan
-             : (cookiePlan === "pro" || cookiePlan === "max") ? cookiePlan
-             : null;
-  const planSource = (urlPlan === "pro" || urlPlan === "max") ? "url" : (cookiePlan === "pro" || cookiePlan === "max") ? "cookie" : "none";
-  const next = plan ? `/api/stripe/redirect?plan=${plan}` : "/dashboard";
-  console.log("[auth/callback] plan detection — urlPlan:", urlPlan, "cookiePlan:", cookiePlan, "resolved:", plan, "source:", planSource, "next:", next);
+
+  let next: string;
+  if (rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")) {
+    next = rawNext;
+  } else {
+    const plan = (cookiePlan === "pro" || cookiePlan === "max") ? cookiePlan : null;
+    next = plan ? `/api/stripe/redirect?plan=${plan}` : "/dashboard";
+  }
+  console.log("[auth/callback] destination — rawNext:", rawNext, "cookiePlan:", cookiePlan, "resolved next:", next);
 
   console.log("[auth/callback] incoming params:", {
     hasCode: !!code,

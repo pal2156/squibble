@@ -304,3 +304,13 @@ create table if not exists public.bounces (
 alter table public.bounces enable row level security;
 create policy "own" on public.bounces for all
   using (email_id in (select id from public.emails where user_id = auth.uid()));
+
+-- ─────────────────────────────────────────────
+-- REALTIME — run after the above
+-- ─────────────────────────────────────────────
+
+-- 19. Publish the emails table to Supabase Realtime so the dashboard receives
+--     instant UPDATE events when a reply is detected (status changes to
+--     positive/negative). Without this the client-side channel subscription
+--     silently receives nothing.
+alter publication supabase_realtime add table public.emails;
