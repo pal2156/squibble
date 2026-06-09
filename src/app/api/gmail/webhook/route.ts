@@ -422,7 +422,91 @@ export async function POST(request: Request) {
       }
 
       if (!isBounceSender(metaFrom) && !isBounceSubject(metaSubject)) {
-        console.log(`[webhook] message ${msg.id} is not a Squibble thread or bounce - skipping`);
+        // Not a bounce. Try matching by the sender's address as a fallback for
+        // replies that arrive outside the expected Squibble thread — e.g. the
+        // professor starts a fresh reply thread, or the original email was sent
+        // to a different address (overrideRecipient / TEST_EMAIL_OVERRIDE) and
+        // the reply comes back from that address in a new thread.
+        const [senderAddr] = extractEmailAddresses(metaFrom);
+        const fallbackRow = senderAddr ? emailAddressMap.get(senderAddr) : undefined;
+
+        if (!fallbackRow) {
+          console.log(
+            `[webhook] message ${msg.id} thread=${msg.threadId} from="${metaFrom}" does not match any Squibble thread or known recipient address — skipping`
+          );
+          continue;
+        }
+
+        console.log(
+          `[webhook] sender-address fallback: message=${msg.id} from="${metaFrom}" matched email id=${fallbackRow.id} professor=${fallbackRow.professor_name}`
+        );
+
+        let fallbackBody = "";
+        try {
+          const fullMsg = await gmail.users.messages.get({
+            userId: "me",
+            id: msg.id,
+            format: "full",
+          });
+          fallbackBody = extractTextBody(fullMsg.data.payload ?? {});
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.log(`[webhook] failed to fetch message ${msg.id}: ${errMsg} - skipping`);
+          continue;
+        }
+
+        if (!fallbackBody.trim()) {
+          console.log(`[webhook] empty body for message ${msg.id} - skipping`);
+          continue;
+        }
+
+        let fallbackClassification: "positive" | "negative" = "positive";
+        try {
+          const classRes = await anthropic.messages.create({
+            model: HAIKU,
+            max_tokens: 10,
+            messages: [
+              {
+                role: "user",
+                content: `Classify this professor's reply to a student cold email. Reply with a single word only: "positive" if the professor shows any interest, asks a question, or does not explicitly decline. Reply "negative" only if the professor explicitly says no or declines.\n\nReply text:\n${fallbackBody.slice(0, 2000)}`,
+              },
+            ],
+          });
+          const word =
+            classRes.content[0].type === "text"
+              ? classRes.content[0].text.trim().toLowerCase()
+              : "positive";
+          if (word === "negative") fallbackClassification = "negative";
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.log(`[webhook] classification failed: ${errMsg} - defaulting to positive`);
+        }
+        console.log(`[webhook] sender-fallback classified email ${fallbackRow.id} as: ${fallbackClassification}`);
+
+        const { error: fallbackUpsertErr } = await admin.from("replies").upsert(
+          {
+            email_id: fallbackRow.id,
+            body: cleanReplyBody(fallbackBody),
+            classification: fallbackClassification,
+            received_at: new Date().toISOString(),
+          },
+          { onConflict: "email_id" }
+        );
+        if (fallbackUpsertErr) {
+          console.log(`[webhook] replies upsert failed for email ${fallbackRow.id}: ${fallbackUpsertErr.message}`);
+        } else {
+          console.log(`[webhook] wrote reply for email ${fallbackRow.id} (sender-address fallback)`);
+        }
+
+        const { error: fallbackUpdateErr } = await admin
+          .from("emails")
+          .update({ status: fallbackClassification })
+          .eq("id", fallbackRow.id);
+        if (fallbackUpdateErr) {
+          console.log(`[webhook] emails status update failed for ${fallbackRow.id}: ${fallbackUpdateErr.message}`);
+        } else {
+          console.log(`[webhook] set emails.status="${fallbackClassification}" for email ${fallbackRow.id} (sender-address fallback)`);
+        }
         continue;
       }
 

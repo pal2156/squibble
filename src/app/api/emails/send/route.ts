@@ -132,7 +132,7 @@ export async function POST(request: Request) {
       gmail_message_id: gmailMessageId,
       gmail_thread_id: gmailThreadId,
       sent_at: new Date().toISOString(),
-      email: toEmail ?? null,
+      email: recipient ?? null,
     }).eq("id", emailId);
 
     await supabase.rpc("decrement_emails_remaining", { uid: user.id });

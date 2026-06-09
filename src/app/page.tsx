@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { CodeRedirectHandler } from "@/components/CodeRedirectHandler";
 import WorkflowDiagram from "@/components/WorkflowDiagram";
 import "./landing.css";
 
@@ -377,7 +376,6 @@ export default function LandingPage() {
 
   return (
     <div className="lp-page">
-      <CodeRedirectHandler />
       <Nav />
 
       {/* HERO */}
