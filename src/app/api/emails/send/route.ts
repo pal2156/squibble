@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getGmailClient, buildMimeMessage } from "@/lib/gmail";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 export async function POST(request: Request) {
   console.log("[send] handler invoked");
@@ -23,7 +22,7 @@ export async function POST(request: Request) {
   // Load email, user's Gmail credentials, and profile (for CV attachment)
   const [{ data: email }, { data: userData }, { data: profileData }] = await Promise.all([
     supabase.from("emails").select("*").eq("id", emailId).eq("user_id", user.id).single(),
-    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name, plan, emails_sent").eq("id", user.id).single(),
+    supabase.from("users").select("gmail_token, gmail_refresh_token, email, name, emails_remaining").eq("id", user.id).single(),
     supabase.from("profiles").select("cv_text, cv_filename").eq("user_id", user.id).single(),
   ]);
 
@@ -37,14 +36,12 @@ export async function POST(request: Request) {
   }
 
   // Enforce global send cap across all campaigns
-  const plan = ((userData as { plan?: string } | null)?.plan ?? "free") as Plan;
-  const sendLimit = PLAN_LIMITS[plan].emails;
-  const emailsUsed = (userData as { emails_sent?: number } | null)?.emails_sent ?? 0;
+  const emailsRemaining = (userData as { emails_remaining?: number } | null)?.emails_remaining ?? 0;
 
-  if (emailsUsed >= sendLimit) {
-    console.log(`[send] global send cap reached: ${emailsUsed}/${sendLimit} (plan: ${plan})`);
+  if (emailsRemaining <= 0) {
+    console.log(`[send] no email credits remaining`);
     return NextResponse.json(
-      { error: `Email limit of ${sendLimit} reached for your ${plan} plan. Upgrade to send more.` },
+      { error: "No email credits remaining. Buy more to continue." },
       { status: 429 }
     );
   }
@@ -71,25 +68,30 @@ export async function POST(request: Request) {
     toEmail = prof?.email || undefined;
   }
 
-  if (!toEmail) {
-    console.error("[send] no email address for professor — aborting, not marking sent");
-    return NextResponse.json({ error: "No email address for this professor" }, { status: 422 });
-  }
-
   const fromName = userData.name ?? user.email ?? "";
   const fromEmail = userData.email ?? user.email ?? "";
   const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
 
   const testOverride = process.env.TEST_EMAIL_OVERRIDE;
-  // Use || not ?? so an empty string overrideRecipient falls through to toEmail.
+  // overrideRecipient (the To field value) takes priority. Use || not ?? so an
+  // empty string falls through to testOverride or the DB-resolved toEmail.
   const recipient = overrideRecipient || testOverride || toEmail;
   const body = testOverride
     ? `${email.body ?? ""}\n\nThis is a test email going to ${testOverride}.`
     : (email.body ?? "");
 
   if (!recipient) {
-    console.error("[send] recipient resolved to empty string — aborting");
-    return NextResponse.json({ error: "Recipient email is empty" }, { status: 422 });
+    console.error("[send] no email address resolved — aborting");
+    return NextResponse.json({ error: "No email address for this professor" }, { status: 422 });
+  }
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  if (!EMAIL_RE.test(recipient)) {
+    console.error("[send] malformed recipient address:", recipient);
+    return NextResponse.json(
+      { error: "The professor's email address appears to be malformed and cannot be sent to." },
+      { status: 422 }
+    );
   }
 
   console.log("[send] recipient:", recipient, "| from:", from, "| subject:", email.subject ?? "(no subject)");
@@ -130,9 +132,10 @@ export async function POST(request: Request) {
       gmail_message_id: gmailMessageId,
       gmail_thread_id: gmailThreadId,
       sent_at: new Date().toISOString(),
+      email: toEmail ?? null,
     }).eq("id", emailId);
 
-    await supabase.rpc("increment_emails_sent", { uid: user.id });
+    await supabase.rpc("decrement_emails_remaining", { uid: user.id });
 
     console.log("[send] email row updated to sent");
     return NextResponse.json({ ok: true, gmailMessageId, gmailThreadId });

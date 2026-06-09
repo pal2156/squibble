@@ -47,10 +47,10 @@ function cleanReplyBody(text: string): string {
     })
     .join("\n");
   const quoteStartPatterns = [
-    /^On .+wrote:/m,
+    /^On [\s\S]+?wrote:[ \t]*$/m,
     /^-{5}Original Message-{5}/m,
-    /^From: .+ Sent:/m,
-    /^>.*$/m,
+    /^From: [\s\S]+?Sent:[ \t]*$/m,
+    /^>/m,
   ];
   let cutIndex = cleaned.length;
   for (const pattern of quoteStartPatterns) {

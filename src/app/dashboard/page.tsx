@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight, X } from "lucide-react";
 import Image from "next/image";
 import { ChartRow } from "@/components/ChartRow";
@@ -83,6 +84,14 @@ function dateMatchesExact(dateSent: string, parsed: { month: number; day: number
 export default function DashboardPage() {
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const sessionId = new URLSearchParams(window.location.search).get("upgraded");
+    if (!sessionId) return;
+    router.replace("/dashboard", { scroll: false });
+    fetch(`/api/stripe/verify-session?session_id=${sessionId}`).catch(() => {});
+  }, [router]);
 
   useEffect(() => {
     let cancelled = false;

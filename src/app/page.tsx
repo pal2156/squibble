@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CodeRedirectHandler } from "@/components/CodeRedirectHandler";
+import WorkflowDiagram from "@/components/WorkflowDiagram";
 import "./landing.css";
 
 // ─── Google OAuth ──────────────────────────────────────────────
@@ -22,18 +23,16 @@ async function signInWithGoogle(redirectTo: string) {
 }
 
 async function handleGoogleLogin() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-  await signInWithGoogle(`${appUrl}/auth/callback`);
+  await signInWithGoogle(`${window.location.origin}/auth/callback`);
 }
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
-  // Store intent in a short-lived cookie before leaving for OAuth. Supabase URL
-  // validation may strip query params from redirectTo, losing the ?next= param.
-  // The cookie survives the redirect chain and lets auth/callback recover it.
+  // Set a cookie so auth/callback can read the plan server-side even if
+  // Supabase strips query params from the redirectTo URL.
   document.cookie = `squibble_plan_intent=${plan}; path=/; max-age=300; SameSite=Lax`;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-  const next = encodeURIComponent(`/api/stripe/redirect?plan=${plan}`);
-  await signInWithGoogle(`${appUrl}/auth/callback?next=${next}`);
+  // Also embed the plan directly in the redirect URL as a simple param.
+  // auth/callback reads whichever arrives — URL param first, cookie as fallback.
+  await signInWithGoogle(`${window.location.origin}/auth/callback?plan=${plan}`);
 }
 
 // ─── Brand mark ────────────────────────────────────────────────
@@ -84,273 +83,6 @@ function Nav() {
           </button>
         </div>
       </nav>
-    </div>
-  );
-}
-
-// ─── Animated node diagram ─────────────────────────────────────
-const DIA_PHASES = [
-  { id: "scan",    label: "Scanning professors…",      duration: 2600 },
-  { id: "match",   label: "Matching to your profile…", duration: 2600 },
-  { id: "rank",    label: "Ranking opportunities…",    duration: 2200 },
-  { id: "contact", label: "Contacting them…",          duration: 2800 },
-  { id: "reply",   label: "Getting replies…",          duration: 3600 },
-  { id: "reset",   label: "Scanning professors…",      duration: 700  },
-];
-
-const CX = 240, CY = 240;
-
-const RAW_NODES = [
-  { id: 0,  angle: 312, radius: 175, strength: 0.96 },
-  { id: 1,  angle:  18, radius: 170, strength: 0.90 },
-  { id: 2,  angle:  78, radius: 180, strength: 0.82 },
-  { id: 3,  angle: 144, radius: 175, strength: 0.74 },
-  { id: 4,  angle: 210, radius: 168, strength: 0.66 },
-  { id: 5,  angle: 256, radius: 178, strength: 0.60 },
-  { id: 6,  angle: 340, radius: 215, strength: 0.42 },
-  { id: 7,  angle:  50, radius: 220, strength: 0.36 },
-  { id: 8,  angle: 110, radius: 215, strength: 0.30 },
-  { id: 9,  angle: 175, radius: 225, strength: 0.34 },
-  { id: 10, angle: 230, radius: 220, strength: 0.40 },
-  { id: 11, angle: 285, radius: 215, strength: 0.28 },
-  { id: 12, angle:  20, radius:  98, strength: 0.45 },
-  { id: 13, angle: 200, radius: 105, strength: 0.42 },
-];
-
-const SURVIVORS = [...RAW_NODES]
-  .filter((n) => n.strength >= 0.55)
-  .sort((a, b) => b.strength - a.strength)
-  .slice(0, 6);
-const SURVIVOR_RANK = new Map(SURVIVORS.map((s, i) => [s.id, i]));
-
-function homePos(node: typeof RAW_NODES[0]) {
-  const a = (node.angle * Math.PI) / 180;
-  return { x: CX + Math.cos(a) * node.radius, y: CY + Math.sin(a) * node.radius };
-}
-function rankPos(rank: number) {
-  const a = -Math.PI / 2 + (rank * Math.PI * 2) / 6;
-  const r = 142 + rank * 10;
-  return { x: CX + Math.cos(a) * r, y: CY + Math.sin(a) * r };
-}
-function farPos(node: typeof RAW_NODES[0]) {
-  const a = (node.angle * Math.PI) / 180;
-  return { x: CX + Math.cos(a) * (node.radius + 90), y: CY + Math.sin(a) * (node.radius + 90) };
-}
-
-function targetFor(phaseId: string, node: typeof RAW_NODES[0]) {
-  const home = homePos(node);
-  const rank = SURVIVOR_RANK.get(node.id);
-  const isSurv = rank !== undefined;
-
-  if (phaseId === "reset") {
-    const far = farPos(node);
-    return { x: far.x, y: far.y, opacity: 0, scale: 0.5, ring: 0, fill: 0, check: 0, lineO: 0 };
-  }
-  if (phaseId === "scan") {
-    return { x: home.x, y: home.y, opacity: 0.85, scale: 1, ring: 0, fill: 0, check: 0, lineO: 0.35 };
-  }
-  if (phaseId === "match") {
-    if (isSurv) {
-      const a = (node.angle * Math.PI) / 180;
-      const r = node.radius * 0.82;
-      return { x: CX + Math.cos(a) * r, y: CY + Math.sin(a) * r, opacity: 1, scale: 1.06, ring: 1, fill: 0, check: 0, lineO: 0.6 };
-    }
-    return { x: home.x, y: home.y, opacity: 0.1, scale: 0.7, ring: 0, fill: 0, check: 0, lineO: 0.04 };
-  }
-  if (phaseId === "rank" || phaseId === "contact") {
-    if (isSurv) {
-      const { x, y } = rankPos(rank!);
-      return { x, y, opacity: 1, scale: 1.06, ring: 1, fill: 0, check: 0, lineO: 0.7 };
-    }
-    const dim = farPos(node);
-    return { x: dim.x * 0.6 + home.x * 0.4, y: dim.y * 0.6 + home.y * 0.4, opacity: 0, scale: 0.5, ring: 0, fill: 0, check: 0, lineO: 0 };
-  }
-  if (phaseId === "reply") {
-    if (isSurv) {
-      const { x, y } = rankPos(rank!);
-      return { x, y, opacity: 1, scale: 1.06, ring: 0.4, fill: 1, check: 1, lineO: 0.55 };
-    }
-    const dim = farPos(node);
-    return { x: dim.x * 0.6 + home.x * 0.4, y: dim.y * 0.6 + home.y * 0.4, opacity: 0, scale: 0.5, ring: 0, fill: 0, check: 0, lineO: 0 };
-  }
-  return { x: home.x, y: home.y, opacity: 0, scale: 1, ring: 0, fill: 0, check: 0, lineO: 0 };
-}
-
-function lerpFill(t: number) {
-  const r = Math.round(255 + (103 - 255) * t);
-  const g = Math.round(255 + (142 - 255) * t);
-  const b = Math.round(255 + (141 - 255) * t);
-  return `rgb(${r},${g},${b})`;
-}
-function lerpStroke(t: number) {
-  const r = Math.round(187 + (103 - 187) * t);
-  const g = Math.round(210 + (142 - 210) * t);
-  const b = Math.round(221 + (141 - 221) * t);
-  return `rgb(${r},${g},${b})`;
-}
-function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
-
-function NodeDiagram() {
-  const [phaseIdx, setPhaseIdx] = useState(0);
-  const phaseRef = useRef(0);
-  const phaseStartRef = useRef(performance.now());
-  const svgRef = useRef<SVGSVGElement>(null);
-  const stateRef = useRef(RAW_NODES.map((n) => ({ ...targetFor("reset", n) })));
-
-  useEffect(() => {
-    phaseRef.current = phaseIdx;
-    phaseStartRef.current = performance.now();
-    const t = setTimeout(() => {
-      setPhaseIdx((p) => (p + 1) % DIA_PHASES.length);
-    }, DIA_PHASES[phaseIdx].duration);
-    return () => clearTimeout(t);
-  }, [phaseIdx]);
-
-  useEffect(() => {
-    let raf: number;
-    let last = performance.now();
-    const tick = (now: number) => {
-      const dt = Math.min(now - last, 33);
-      last = now;
-      const phase = DIA_PHASES[phaseRef.current].id;
-      const phaseT = now - phaseStartRef.current;
-
-      for (let i = 0; i < RAW_NODES.length; i++) {
-        const node = RAW_NODES[i];
-        const t = targetFor(phase, node);
-        let fillT = t.fill, checkT = t.check;
-        if (phase === "reply") {
-          const rank = SURVIVOR_RANK.get(node.id);
-          if (rank !== undefined) {
-            const delay = rank * 480;
-            const dur = 500;
-            const p = Math.max(0, Math.min(1, (phaseT - delay) / dur));
-            fillT = easeOutCubic(p);
-            checkT = easeOutCubic(p);
-          } else {
-            fillT = 0; checkT = 0;
-          }
-        }
-        const s = stateRef.current[i];
-        const k = Math.min(1, dt / 320);
-        const kFast = Math.min(1, dt / 200);
-        s.x += (t.x - s.x) * k;
-        s.y += (t.y - s.y) * k;
-        s.opacity += (t.opacity - s.opacity) * k;
-        s.scale += (t.scale - s.scale) * k;
-        s.ring += (t.ring - s.ring) * k;
-        s.fill += (fillT - s.fill) * kFast;
-        s.check += (checkT - s.check) * kFast;
-        s.lineO += (t.lineO - s.lineO) * k;
-      }
-
-      const svg = svgRef.current;
-      if (svg) {
-        for (let i = 0; i < RAW_NODES.length; i++) {
-          const s = stateRef.current[i];
-          const g = svg.querySelector(`[data-node="${i}"]`);
-          if (g) {
-            g.setAttribute("transform", `translate(${s.x.toFixed(2)} ${s.y.toFixed(2)}) scale(${s.scale.toFixed(3)})`);
-            (g as SVGGElement).style.opacity = s.opacity.toFixed(3);
-            const fillEl = g.querySelector(".node-fill");
-            if (fillEl) {
-              fillEl.setAttribute("fill", lerpFill(s.fill));
-              fillEl.setAttribute("stroke", lerpStroke(s.fill));
-            }
-            const ringEl = g.querySelector(".node-ring");
-            if (ringEl) (ringEl as SVGElement).style.opacity = s.ring.toFixed(3);
-            const checkEl = g.querySelector(".node-check");
-            if (checkEl) {
-              const cs = Math.max(0.001, s.check);
-              checkEl.setAttribute("transform", `scale(${cs.toFixed(3)})`);
-              (checkEl as SVGElement).style.opacity = s.check.toFixed(3);
-            }
-          }
-          const ln = svg.querySelector(`[data-line="${i}"]`);
-          if (ln) {
-            const s = stateRef.current[i];
-            ln.setAttribute("x2", s.x.toFixed(2));
-            ln.setAttribute("y2", s.y.toFixed(2));
-            (ln as SVGElement).style.opacity = s.lineO.toFixed(3);
-            const isSurv = SURVIVOR_RANK.has(i);
-            const lineStrength = isSurv ? Math.max(stateRef.current[i].ring, stateRef.current[i].fill) : 0;
-            ln.setAttribute("stroke", lerpStroke(lineStrength * 0.7));
-          }
-        }
-
-        for (let r = 0; r < SURVIVORS.length; r++) {
-          const pulse = svg.querySelector(`[data-pulse="${r}"]`);
-          if (!pulse) continue;
-          if (phase === "contact") {
-            const delay = r * 220;
-            const dur = 1100;
-            const p = (phaseT - delay) / dur;
-            if (p >= 0 && p <= 1) {
-              const eased = easeOutCubic(p);
-              const nodeIdx = SURVIVORS[r].id;
-              const ns = stateRef.current[nodeIdx];
-              const px = CX + (ns.x - CX) * eased;
-              const py = CY + (ns.y - CY) * eased;
-              pulse.setAttribute("cx", px.toFixed(2));
-              pulse.setAttribute("cy", py.toFixed(2));
-              const fade = Math.sin(p * Math.PI);
-              (pulse as SVGElement).style.opacity = (fade * 0.95).toFixed(3);
-            } else {
-              (pulse as SVGElement).style.opacity = "0";
-            }
-          } else {
-            (pulse as SVGElement).style.opacity = "0";
-          }
-        }
-      }
-
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  const phase = DIA_PHASES[phaseIdx];
-
-  return (
-    <div className="diagram-wrap">
-      <div className="diagram-status">
-        <span className="spinner" aria-hidden="true"></span>
-        <span className="status-text" key={phase.label}>{phase.label}</span>
-      </div>
-      <svg ref={svgRef} className="diagram-svg" viewBox="0 0 480 480" aria-hidden="true">
-        <circle cx={CX} cy={CY} r={195} fill="none" stroke="#BBD2DD" strokeWidth="1" strokeDasharray="2 6" opacity="0.45" />
-        {RAW_NODES.map((_, i) => (
-          <line key={`line-${i}`} data-line={i} x1={CX} y1={CY} x2={CX} y2={CY}
-            stroke="#BBD2DD" strokeWidth="1" strokeLinecap="round"
-            style={{ opacity: 0, transition: "stroke 0.5s ease" }} />
-        ))}
-        {SURVIVORS.map((_, r) => (
-          <circle key={`pulse-${r}`} data-pulse={r} r="4.5" fill="#678E8D" style={{ opacity: 0 }} />
-        ))}
-        {RAW_NODES.map((n, i) => {
-          const isSurv = SURVIVOR_RANK.has(i);
-          return (
-            <g key={`n-${i}`} data-node={i} style={{ opacity: 0 }}>
-              <circle className="node-ring" r="15" fill="none" stroke="#678E8D" strokeWidth="1.3" strokeDasharray="2 3" style={{ opacity: 0 }} />
-              <circle className="node-fill" r={isSurv ? 9 : 7} fill="#FFFFFF" stroke="#BBD2DD" strokeWidth="1.3" />
-              <circle r="1.6" fill="#3C5352" opacity="0.5" />
-              {isSurv && (
-                <g className="node-check" style={{ opacity: 0, transformOrigin: "0 0" }}>
-                  <path d="M -3.5 0 L -1 2.4 L 3.6 -2.6" fill="none" stroke="#FFFFFF" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-                </g>
-              )}
-            </g>
-          );
-        })}
-        <g transform={`translate(${CX} ${CY})`}>
-          <circle r="28" fill="none" stroke="#678E8D" strokeWidth="1.2" opacity="0.4">
-            <animate attributeName="r" values="28;34;28" dur="4s" repeatCount="indefinite" />
-            <animate attributeName="opacity" values="0.4;0.1;0.4" dur="4s" repeatCount="indefinite" />
-          </circle>
-          <image href="/landing/profile-icon.png" x={-44} y={-36} width={88} height={103} preserveAspectRatio="xMidYMid meet" />
-        </g>
-      </svg>
     </div>
   );
 }
@@ -633,14 +365,10 @@ const FREE_FEATURES = [
 const PRO_FEATURES = [
   "30 professor searches",
   "30 personalized emails",
-  "Reply tracking dashboard",
-  "Gmail integration",
 ];
 const MAX_FEATURES = [
   "75 professor searches",
   "75 personalized emails",
-  "Reply tracking dashboard",
-  "Gmail integration",
 ];
 
 // ─── Landing page ──────────────────────────────────────────────
@@ -666,7 +394,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="hero-right">
-            <NodeDiagram />
+            <WorkflowDiagram />
           </div>
         </div>
       </section>
@@ -741,7 +469,7 @@ export default function LandingPage() {
           <div className="section-header reveal">
             <div className="eyebrow"><span className="dot"></span>Pricing</div>
             <h2>Simple pricing</h2>
-            <p>Start free. Upgrade when you&apos;re ready.</p>
+            <p>Start free. Buy more when you need it.</p>
           </div>
           <div className="pricing-grid">
             <div className="price-card reveal">
@@ -757,29 +485,28 @@ export default function LandingPage() {
               <button className="price-cta" onClick={handleGoogleLogin}>Get started free</button>
             </div>
             <div className="price-card featured reveal">
-              <div className="price-tag">Most Popular</div>
-              <div className="price-name">Pro</div>
+              <div className="price-name">STANDARD</div>
               <div className="price-amount">
                 <span className="num">$15</span>
               </div>
               <div className="price-sub">One-time</div>
-              <p className="price-subtitle">For your next research cycle.</p>
+              <p className="price-subtitle">Add 30 searches and 30 emails to your account.</p>
               <ul className="price-features">
                 {PRO_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
-              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("pro")}>Get started</button>
+              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("pro")}>Buy</button>
             </div>
             <div className="price-card reveal">
-              <div className="price-name">Max</div>
+              <div className="price-name">PLUS</div>
               <div className="price-amount">
                 <span className="num">$25</span>
               </div>
               <div className="price-sub">One-time</div>
-              <p className="price-subtitle">For high-volume outreach.</p>
+              <p className="price-subtitle">Add 75 searches and 75 emails to your account.</p>
               <ul className="price-features">
                 {MAX_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
               </ul>
-              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("max")}>Get started</button>
+              <button className="price-cta" onClick={() => handleGoogleLoginForPlan("max")}>Buy</button>
             </div>
           </div>
         </div>

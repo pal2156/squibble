@@ -12,17 +12,25 @@ export async function GET(request: Request) {
   const plan = searchParams.get("plan") as "pro" | "max" | null;
   const priceId = plan ? PRICE_IDS[plan] : null;
 
+  console.log("[stripe/redirect] hit — plan:", plan, "priceId:", priceId);
+
   if (!priceId || !plan) {
+    console.error("[stripe/redirect] missing plan or priceId — redirecting to dashboard");
+    return NextResponse.redirect(`${origin}/dashboard`);
+  }
+
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.error("[stripe/redirect] STRIPE_SECRET_KEY is not set — cannot create Stripe session");
     return NextResponse.redirect(`${origin}/dashboard`);
   }
 
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard`,
+      success_url: `${origin}/dashboard?upgraded={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/dashboard`,
       metadata: { plan },
     };

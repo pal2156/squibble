@@ -19,15 +19,13 @@ async function signInWithGoogle(redirectTo: string) {
 }
 
 async function handleGoogleLogin() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-  await signInWithGoogle(`${appUrl}/auth/callback`);
+  await signInWithGoogle(`${window.location.origin}/auth/callback`);
 }
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
   document.cookie = `squibble_plan_intent=${plan}; path=/; max-age=300; SameSite=Lax`;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
   const next = encodeURIComponent(`/api/stripe/redirect?plan=${plan}`);
-  await signInWithGoogle(`${appUrl}/auth/callback?next=${next}`);
+  await signInWithGoogle(`${window.location.origin}/auth/callback?next=${next}`);
 }
 
 function Check() {
@@ -49,14 +47,10 @@ const FREE_FEATURES = [
 const PRO_FEATURES = [
   "30 professor searches",
   "30 personalized emails",
-  "Reply tracking dashboard",
-  "Gmail integration",
 ];
 const MAX_FEATURES = [
   "75 professor searches",
   "75 personalized emails",
-  "Reply tracking dashboard",
-  "Gmail integration",
 ];
 
 export default function PricingPage() {
@@ -66,7 +60,7 @@ export default function PricingPage() {
         <div className="section-header">
           <div className="eyebrow"><span className="dot"></span>Pricing</div>
           <h2>Simple pricing</h2>
-          <p>Start free. Upgrade when you&apos;re ready.</p>
+          <p>Start free. Buy more when you need it.</p>
         </div>
         <div className="pricing-grid">
           <div className="price-card">
@@ -82,29 +76,28 @@ export default function PricingPage() {
             <button className="price-cta" onClick={handleGoogleLogin}>Get started free</button>
           </div>
           <div className="price-card featured">
-            <div className="price-tag">Most Popular</div>
-            <div className="price-name">Pro</div>
+            <div className="price-name">STANDARD</div>
             <div className="price-amount">
               <span className="num">$15</span>
             </div>
             <div className="price-sub">One-time</div>
-            <p className="price-subtitle">For your next research cycle.</p>
+            <p className="price-subtitle">Add 30 searches and 30 emails to your account.</p>
             <ul className="price-features">
               {PRO_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
             </ul>
-            <button className="price-cta" onClick={() => handleGoogleLoginForPlan("pro")}>Get started</button>
+            <button className="price-cta" onClick={() => handleGoogleLoginForPlan("pro")}>Buy</button>
           </div>
           <div className="price-card">
-            <div className="price-name">Max</div>
+            <div className="price-name">PLUS</div>
             <div className="price-amount">
               <span className="num">$25</span>
             </div>
             <div className="price-sub">One-time</div>
-            <p className="price-subtitle">For high-volume outreach.</p>
+            <p className="price-subtitle">Add 75 searches and 75 emails to your account.</p>
             <ul className="price-features">
               {MAX_FEATURES.map((f, i) => <li key={i}><Check />{f}</li>)}
             </ul>
-            <button className="price-cta" onClick={() => handleGoogleLoginForPlan("max")}>Get started</button>
+            <button className="price-cta" onClick={() => handleGoogleLoginForPlan("max")}>Buy</button>
           </div>
         </div>
       </div>

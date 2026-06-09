@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Building2, ChevronDown, CornerDownLeft, Send } from "lucide-react";
 
 type EmailStatus = "Positive Reply" | "No Response" | "Negative Reply" | "Do Not Contact";
-type SortOrder = "newest" | "positive" | "negative" | "unanswered";
+type SortOrder = "newest" | "positive" | "negative";
 
 interface SentEmail {
   id: string;
@@ -29,7 +29,6 @@ const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: "newest", label: "Newest First" },
   { value: "positive", label: "Positive First" },
   { value: "negative", label: "Negative First" },
-  { value: "unanswered", label: "Unanswered First" },
 ];
 
 function parseDate(dateStr: string | undefined): number {
@@ -75,18 +74,6 @@ function sortConversations(convs: SentEmail[], sort: SortOrder): SentEmail[] {
       const aRank = statusRank(a.status, sort);
       const bRank = statusRank(b.status, sort);
       if (aRank !== bRank) return aRank - bRank;
-      const aDate = a.reply ? parseDate(a.reply.date) : parseDate(a.dateSent);
-      const bDate = b.reply ? parseDate(b.reply.date) : parseDate(b.dateSent);
-      return bDate - aDate;
-    });
-  }
-
-  if (sort === "unanswered") {
-    return copy.sort((a, b) => {
-      const aUnread = a.status === "No Response";
-      const bUnread = b.status === "No Response";
-      if (aUnread && !bUnread) return -1;
-      if (!aUnread && bUnread) return 1;
       const aDate = a.reply ? parseDate(a.reply.date) : parseDate(a.dateSent);
       const bDate = b.reply ? parseDate(b.reply.date) : parseDate(b.dateSent);
       return bDate - aDate;

@@ -48,7 +48,7 @@ export interface Professor {
   created_at: string;
 }
 
-export type EmailStatus = "draft" | "sent" | "positive" | "negative" | "no_response";
+export type EmailStatus = "draft" | "sent" | "positive" | "negative" | "no_response" | "bounced";
 
 export interface Email {
   id: string;
@@ -81,6 +81,14 @@ export interface GmailWatch {
   history_id: string | null;
   expiration: number | null;
   updated_at: string;
+}
+
+export interface Bounce {
+  id: string;
+  email_id: string;
+  bounced_at: string;
+  credit_refunded: boolean;
+  refunded_at: string | null;
 }
 
 // Joined shape used by the dashboard and conversations pages

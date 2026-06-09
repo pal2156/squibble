@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { useCampaignDraft } from "@/components/CampaignDraftContext";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 
 const inputStyle = (filled: boolean) => ({
@@ -37,24 +36,28 @@ export default function CampaignPage() {
   const [scoutingRemaining, setScoutingRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then((d: { plan: Plan; searches_used: number }) => {
-        const planLimit = PLAN_LIMITS[d.plan]?.searches ?? 3;
-        const remaining = Math.max(0, planLimit - (d.searches_used ?? 0));
-        const max = Math.min(20, remaining);
-        setScoutingRemaining(remaining);
-        setSliderMax(max);
-        if (contactCount > max) {
-          setDraft({ contactCount: Math.max(1, max), rawCount: String(Math.max(1, max)) });
-        }
-      })
-      .catch(() => {});
+    function fetchUsage() {
+      fetch("/api/usage")
+        .then((r) => r.json())
+        .then((d: { searches_remaining: number }) => {
+          const remaining = d.searches_remaining ?? 0;
+          setScoutingRemaining(remaining);
+          setSliderMax(Math.min(20, remaining));
+        })
+        .catch(() => {});
+    }
+
+    fetchUsage();
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") fetchUsage();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const noScoutingQuota = scoutingRemaining !== null && scoutingRemaining === 0;
-  const sliderAtCap = sliderMax < 20 && contactCount >= sliderMax && scoutingRemaining !== null;
   const ready = university.trim() && research.trim() && !noScoutingQuota;
 
   if (loading) {
@@ -127,6 +130,19 @@ export default function CampaignPage() {
             if (event.type === "progress") setProgressMessage(event.message);
             if (event.type === "error") throw new Error(event.message);
             if (event.type === "done") {
+              try {
+                const [profRes, usageRes] = await Promise.all([
+                  fetch(`/api/professors?campaignId=${campaignId}`),
+                  fetch("/api/usage"),
+                ]);
+                const [profData, usageData] = await Promise.all([profRes.json(), usageRes.json()]);
+                sessionStorage.setItem(
+                  `squibble_profs_${campaignId}`,
+                  JSON.stringify({ profData, usageData })
+                );
+              } catch {
+                // Prefetch failed; professors page will fetch on its own
+              }
               resetDraft();
               router.push(`/campaign/professors?campaignId=${campaignId}`);
               return;
@@ -260,38 +276,33 @@ export default function CampaignPage() {
             min={1}
             max={sliderMax > 0 ? sliderMax : 1}
             value={contactCount}
+            disabled={noScoutingQuota}
             onChange={(e) => {
               const n = Number(e.target.value);
               setDraft({ contactCount: n, rawCount: String(n) });
             }}
-            className="w-full cursor-pointer"
-            style={{ accentColor: "var(--accent)" }}
+            className="w-full"
+            style={{
+              accentColor: "var(--accent)",
+              cursor: noScoutingQuota ? "not-allowed" : "pointer",
+              opacity: noScoutingQuota ? 0.4 : 1,
+            }}
           />
           <div className="flex items-center justify-between mt-3">
             <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
-              Up to {sliderMax} researchers on your current plan.
+              {scoutingRemaining === null
+                ? " "
+                : scoutingRemaining === 0
+                ? "0 searches remaining."
+                : `${scoutingRemaining} search${scoutingRemaining === 1 ? "" : "es"} remaining.`}
             </p>
-            {sliderAtCap && (
-              <p className="text-xs" style={{ color: "#678E8D" }}>
-                Scouting limit reached ({scoutingRemaining} credit{scoutingRemaining === 1 ? "" : "s"} remaining)
+            {scoutingRemaining === 0 && (
+              <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
+                Buy more to continue.
               </p>
             )}
           </div>
         </div>
-
-        {noScoutingQuota && (
-          <div
-            className="rounded-xl p-5 mb-6 text-center"
-            style={{ background: "rgba(103,142,141,0.08)", border: "1px solid rgba(103,142,141,0.2)" }}
-          >
-            <p className="text-sm font-medium mb-1" style={{ color: "var(--ink)" }}>
-              No scouting credits remaining
-            </p>
-            <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
-              You have used all your professor scouting credits on your current plan. Upgrade to scout more professors.
-            </p>
-          </div>
-        )}
 
         {error && (
           <p className="text-xs mb-4 text-center" style={{ color: "#f87171" }}>{error}</p>

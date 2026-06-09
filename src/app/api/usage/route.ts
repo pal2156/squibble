@@ -10,13 +10,12 @@ export async function GET() {
 
   const { data } = await supabase
     .from("users")
-    .select("plan, searches_used, emails_sent")
+    .select("searches_remaining, emails_remaining")
     .eq("id", user.id)
     .single();
 
   return NextResponse.json({
-    plan: data?.plan ?? "free",
-    searches_used: data?.searches_used ?? 0,
-    emails_sent: data?.emails_sent ?? 0,
+    searches_remaining: data?.searches_remaining ?? 0,
+    emails_remaining: data?.emails_remaining ?? 0,
   });
 }

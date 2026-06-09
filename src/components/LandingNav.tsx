@@ -17,8 +17,7 @@ async function signInWithGoogle(redirectTo: string) {
 }
 
 async function handleGoogleLogin() {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
-  await signInWithGoogle(`${appUrl}/auth/callback`);
+  await signInWithGoogle(`${window.location.origin}/auth/callback`);
 }
 
 function Mark({ height = 26 }: { height?: number }) {

@@ -2,10 +2,16 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Check, Mail, Building2, FlaskConical, GraduationCap } from "lucide-react";
+import { ArrowRight, Check, Mail } from "lucide-react";
 import type { Professor } from "@/lib/types";
 import { cleanDescription } from "@/lib/utils";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
+
+// Maps raw AI scores (which skew conservative) to display percentages that
+// feel accurate for genuinely relevant professors. Monotonically increasing,
+// so relative ranking is preserved.
+function toDisplayScore(raw: number): number {
+  return Math.round(raw + (100 - raw) * 0.55);
+}
 
 function fitScoreStyle(score: number | null): { bg: string; text: string; border: string } {
   if (!score) return { bg: "rgba(103,142,141,0.1)", text: "#678E8D", border: "rgba(103,142,141,0.2)" };
@@ -20,13 +26,16 @@ function ProfessorCard({
   selected,
   onToggle,
   rank,
+  disabled,
 }: {
   professor: Professor;
   selected: boolean;
   onToggle: () => void;
   rank: number;
+  disabled: boolean;
 }) {
-  const scoreStyle = fitScoreStyle(professor.fit_score);
+  const displayScore = professor.fit_score != null ? toDisplayScore(professor.fit_score) : null;
+  const scoreStyle = fitScoreStyle(displayScore);
   const initials = professor.name
     .split(" ")
     .map((n) => n[0])
@@ -36,7 +45,7 @@ function ProfessorCard({
 
   return (
     <button
-      onClick={onToggle}
+      onClick={disabled ? undefined : onToggle}
       className="w-full text-left rounded-xl border p-4 transition-all duration-150 group relative"
       style={{
         background: selected ? "rgba(103,142,141,0.1)" : "var(--bg-card)",
@@ -44,6 +53,8 @@ function ProfessorCard({
         boxShadow: selected
           ? "0 0 0 1px rgba(103,142,141,0.25), 0 1px 3px rgba(0,0,0,0.06)"
           : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
       }}
     >
       <div className="absolute top-4 left-4 text-[11px] font-bold tabular-nums" style={{ color: "var(--ink-muted)" }}>
@@ -73,12 +84,12 @@ function ProfessorCard({
             <h3 className="text-sm font-semibold" style={{ color: "var(--ink)" }}>
               {professor.name.replace(/^Prof\.\s*/i, "")}
             </h3>
-            {professor.fit_score != null && (
+            {displayScore != null && (
               <span
                 className="inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full border"
                 style={{ background: scoreStyle.bg, color: scoreStyle.text, borderColor: scoreStyle.border }}
               >
-                {professor.fit_score}% match
+                {displayScore}% match
               </span>
             )}
           </div>
@@ -86,7 +97,7 @@ function ProfessorCard({
           <div className="flex items-center gap-3 mb-2.5 flex-wrap">
             {professor.university && (
               <span className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--ink-secondary)" }}>
-                <Building2 className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
+                <img src="/icons/university.png" alt="" className="w-3 h-3" />
                 {professor.university}
               </span>
             )}
@@ -94,7 +105,7 @@ function ProfessorCard({
               <>
                 <span className="w-px h-3" style={{ background: "var(--border-default)" }} />
                 <span className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--ink-secondary)" }}>
-                  <FlaskConical className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
+                  <img src="/icons/field.png" alt="" className="w-3 h-3" />
                   {professor.department}
                 </span>
               </>
@@ -103,7 +114,7 @@ function ProfessorCard({
               <>
                 <span className="w-px h-3" style={{ background: "var(--border-default)" }} />
                 <span className="inline-flex items-center gap-1 text-xs" style={{ color: "var(--ink-secondary)" }}>
-                  <GraduationCap className="w-3 h-3" style={{ color: "var(--ink-muted)" }} />
+                  <img src="/icons/seniority.png" alt="" className="w-3 h-3" />
                   {professor.title}
                 </span>
               </>
@@ -124,7 +135,7 @@ function ProfessorCard({
                   className="text-[10px] font-medium px-2 py-0.5 rounded-full"
                   style={{ background: "var(--bg-elevated)", color: "var(--ink-muted)" }}
                 >
-                  {area}
+                  {area.charAt(0).toUpperCase() + area.slice(1)}
                 </span>
               ))}
             </div>
@@ -153,13 +164,32 @@ function ProfessorsContent() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailsRemaining, setEmailsRemaining] = useState<number | null>(null);
-  const [selectionLimitHit, setSelectionLimitHit] = useState(false);
 
   useEffect(() => {
     if (!campaignId) {
       setError("No campaign found. Please start a new campaign.");
       setLoading(false);
       return;
+    }
+
+    const prefetchKey = `squibble_profs_${campaignId}`;
+    const cached = sessionStorage.getItem(prefetchKey);
+    if (cached) {
+      sessionStorage.removeItem(prefetchKey);
+      try {
+        const { profData, usageData } = JSON.parse(cached) as {
+          profData: { professors?: Professor[]; campaign?: { title?: string }; error?: string };
+          usageData: { emails_remaining?: number };
+        };
+        if (profData.error) throw new Error(profData.error);
+        setProfessors(profData.professors ?? []);
+        setCampaignTitle(profData.campaign?.title ?? "");
+        setEmailsRemaining(usageData.emails_remaining ?? 0);
+        setLoading(false);
+        return;
+      } catch {
+        // Fall through to normal fetch
+      }
     }
 
     Promise.all([
@@ -170,32 +200,27 @@ function ProfessorsContent() {
         if (profData.error) throw new Error(profData.error);
         setProfessors(profData.professors ?? []);
         setCampaignTitle(profData.campaign?.title ?? "");
-
-        const plan: Plan = usageData.plan ?? "free";
-        const limit = PLAN_LIMITS[plan].emails;
-        const used = usageData.emails_sent ?? 0;
-        setEmailsRemaining(Math.max(0, limit - used));
+        setEmailsRemaining(usageData.emails_remaining ?? 0);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [campaignId]);
 
   const toggle = (id: string) => {
+    const isSelected = selected.has(id);
+    if (!isSelected && emailsRemaining !== null && emailsRemaining <= 0) return;
+
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) {
+      if (isSelected) {
         next.delete(id);
-        setSelectionLimitHit(false);
       } else {
-        if (emailsRemaining !== null && next.size >= emailsRemaining) {
-          setSelectionLimitHit(true);
-          return prev;
-        }
         next.add(id);
-        setSelectionLimitHit(false);
       }
       return next;
     });
+
+    setEmailsRemaining((r) => (r !== null ? r + (isSelected ? 1 : -1) : r));
   };
 
   const handleDraftEmails = async () => {
@@ -242,6 +267,9 @@ function ProfessorsContent() {
     );
   }
 
+  const allScoresLow =
+    professors.length >= 2 && professors.every((p) => (p.fit_score ?? 0) < 65);
+
   return (
     <div className="px-8 py-8 max-w-3xl mx-auto">
       {campaignTitle && (
@@ -249,6 +277,19 @@ function ProfessorsContent() {
           <h1 className="text-3xl font-medium" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             {campaignTitle}
           </h1>
+        </div>
+      )}
+
+      {allScoresLow && (
+        <div
+          className="mb-5 px-4 py-3 rounded-xl text-xs"
+          style={{
+            background: "rgba(248,113,113,0.06)",
+            color: "#f87171",
+            border: "1px solid rgba(248,113,113,0.15)",
+          }}
+        >
+          None of these professors closely match your research interest. You may want to try a different university or broaden your field.
         </div>
       )}
 
@@ -280,30 +321,27 @@ function ProfessorsContent() {
             selected={selected.has(prof.id)}
             onToggle={() => toggle(prof.id)}
             rank={i + 1}
+            disabled={emailsRemaining === 0 && !selected.has(prof.id)}
           />
         ))}
       </div>
 
       <div
-        className="sticky bottom-5 rounded-xl border backdrop-blur-xl overflow-hidden"
-        style={{ background: "rgba(60,83,82,0.97)", borderColor: "var(--border-default)", boxShadow: "0 -4px 20px rgba(103,142,141,0.12), 0 0 0 1px rgba(103,142,141,0.15)" }}
+        className="sticky bottom-5 rounded-xl border backdrop-blur-sm overflow-hidden"
+        style={{ background: "var(--bg-card)", borderColor: "var(--border-subtle)", boxShadow: "0 4px 24px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)" }}
       >
-        {selectionLimitHit && (
-          <div className="px-4 pt-2.5 pb-0">
-            <p className="text-xs" style={{ color: "#678E8D" }}>
-              You can send up to {emailsRemaining} email{emailsRemaining === 1 ? "" : "s"} on your current plan. Deselect a professor to choose a different one.
-            </p>
-          </div>
-        )}
         <div className="flex items-center justify-between gap-4 px-4 py-3">
           <div>
             <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
               {selected.size === 0 ? "Select professors to continue" : `${selected.size} selected`}
             </p>
             {emailsRemaining !== null && (
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
-                {emailsRemaining} email credit{emailsRemaining === 1 ? "" : "s"} remaining
-              </p>
+              <div className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
+                <span>{emailsRemaining} emails remaining</span>
+                {emailsRemaining === 0 && (
+                  <span className="block">Buy more to continue</span>
+                )}
+              </div>
             )}
           </div>
           <button

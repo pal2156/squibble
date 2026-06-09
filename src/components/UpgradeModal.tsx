@@ -9,48 +9,29 @@ interface UpgradeModalProps {
 
 const PLANS = [
   {
-    name: "Free",
-    price: "$0",
-    priceSub: "No credit card required.",
-    subtitle: "Try it out.",
-    cta: "Get started free",
-    features: [
-      "3 professor searches",
-      "2 personalized emails",
-      "Reply tracking dashboard",
-      "Gmail integration",
-    ],
-    popular: false,
-    priceId: null as string | null,
-  },
-  {
-    name: "Pro",
+    name: "STANDARD",
+    planKey: "pro",
     price: "$15",
     priceSub: "One-time",
-    subtitle: "For your next research cycle.",
-    cta: "Get started",
+    subtitle: "Add 30 searches and 30 emails to your account.",
+    cta: "Buy",
     features: [
       "30 professor searches",
       "30 personalized emails",
-      "Reply tracking dashboard",
-      "Gmail integration",
     ],
-    popular: true,
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO ?? "price_1Tdd5F2fASOksRg20N4gCDgC",
   },
   {
-    name: "Max",
+    name: "PLUS",
+    planKey: "max",
     price: "$25",
     priceSub: "One-time",
-    subtitle: "For high-volume outreach.",
-    cta: "Get started",
+    subtitle: "Add 75 searches and 75 emails to your account.",
+    cta: "Buy",
     features: [
       "75 professor searches",
       "75 personalized emails",
-      "Reply tracking dashboard",
-      "Gmail integration",
     ],
-    popular: false,
     priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX ?? "price_1Tdd5k2fASOksRg2Z9WHMbkG",
   },
 ];
@@ -59,14 +40,14 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  async function handleCheckout(priceId: string, planName: string) {
-    setLoadingPlan(planName);
+  async function handleCheckout(priceId: string, planKey: string) {
+    setLoadingPlan(planKey);
     setCheckoutError(null);
     try {
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ priceId, plan: planName.toLowerCase() }),
+        body: JSON.stringify({ priceId, plan: planKey }),
       });
       if (!res.ok) {
         throw new Error(`Checkout failed (${res.status})`);
@@ -139,10 +120,10 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
         {/* Header */}
         <div className="text-center mb-8">
           <h2 className="text-2xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
-            Choose a plan
+            Add credits
           </h2>
           <p className="text-sm" style={{ color: "var(--ink-secondary)" }}>
-            Scale your research outreach with the right tier for you.
+            One-time purchase. Credits never expire.
           </p>
         </div>
 
@@ -154,32 +135,16 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
         )}
 
         {/* Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
           {PLANS.map((plan) => (
             <div
               key={plan.name}
               className="relative flex flex-col rounded-xl p-6"
               style={{
-                background: plan.popular ? "var(--bg-elevated)" : "var(--bg-card)",
-                border: plan.popular
-                  ? "2px solid var(--accent)"
-                  : "1px solid var(--border-subtle)",
+                background: "var(--bg-card)",
+                border: "1px solid var(--border-subtle)",
               }}
             >
-              {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span
-                    className="text-[10px] font-semibold uppercase tracking-widest px-3 py-1 rounded-full"
-                    style={{
-                      background: "var(--accent)",
-                      color: "#fff",
-                    }}
-                  >
-                    Most Popular
-                  </span>
-                </div>
-              )}
-
               <h3
                 className="text-xs font-semibold uppercase tracking-widest mb-2"
                 style={{ color: "var(--accent)" }}
@@ -211,9 +176,9 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
 
               <button
                 onClick={() => {
-                  if (plan.priceId) handleCheckout(plan.priceId, plan.name);
+                  if (plan.priceId) handleCheckout(plan.priceId, plan.planKey);
                 }}
-                disabled={!plan.priceId || loadingPlan === plan.name}
+                disabled={!plan.priceId || loadingPlan === plan.planKey}
                 className="w-full py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-60"
                 style={{ background: "var(--accent)", color: "#fff" }}
                 onMouseEnter={(e) => {
@@ -223,7 +188,7 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
                   e.currentTarget.style.background = "var(--accent)";
                 }}
               >
-                {loadingPlan === plan.name ? "Redirecting..." : plan.cta}
+                {loadingPlan === plan.planKey ? "Redirecting..." : plan.cta}
               </button>
             </div>
           ))}

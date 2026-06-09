@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, extractJsonString, parseClaudeJson, SONNET, HAIKU } from "@/lib/anthropic";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
+import { anthropic, extractJsonString, parseClaudeJson, HAIKU } from "@/lib/anthropic";
 
 const encoder = new TextEncoder();
 
@@ -17,11 +16,10 @@ function extractText(content: unknown): string {
     .trim();
 }
 
-// When Claude returns prose instead of JSON, ask Haiku to reformat it
 async function reformatAsJson<T>(rawText: string, instruction: string): Promise<T> {
   const res = await anthropic.messages.create({
     model: HAIKU,
-    max_tokens: 4096,
+    max_tokens: 512,
     system:
       "You extract and reformat information into valid JSON. Return ONLY valid JSON with no markdown fences and no explanation.",
     messages: [
@@ -38,7 +36,6 @@ async function reformatAsJson<T>(rawText: string, instruction: string): Promise<
   return JSON.parse(extracted) as T;
 }
 
-// Try fast JSON parse first; fall back to Haiku reformatter if the response is prose
 async function robustJson<T>(rawText: string, fallbackInstruction: string): Promise<T> {
   try {
     return parseClaudeJson<T>(rawText);
@@ -47,6 +44,168 @@ async function robustJson<T>(rawText: string, fallbackInstruction: string): Prom
   }
 }
 
+type ProfessorStub = { name: string; profile_url: string | null };
+
+function normalizeName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/^(dr\.|prof\.|professor)\s+/i, "");
+}
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const out = [...arr];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+type EnrichedProfessor = {
+  name: string;
+  email: string | null;
+  title: string | null;
+  department: string | null;
+  profile_url: string | null;
+  description: string | null;
+  research_areas: string[];
+  source_type?: string;
+  university: string;
+};
+
+// Phase 1: One Haiku call to find the faculty directory and return ALL professor
+// names and profile URLs found on the page. The list is shuffled server-side so
+// every run samples a different subset — never relies on LLM "randomness".
+async function findFacultyStubs(
+  university: string,
+  researchInterest: string
+): Promise<{ stubs: ProfessorStub[]; department: string }> {
+  const res = await anthropic.messages.create({
+    model: HAIKU,
+    max_tokens: 1200,
+    tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
+    system:
+      "You find faculty directory pages and return professor name lists as JSON. Return ONLY valid JSON. Use at most 2 web searches total.",
+    messages: [
+      {
+        role: "user",
+        content: `Find professors at ${university} who work in or near "${researchInterest}".
+
+Steps:
+1. Search for the faculty directory at ${university} most relevant to "${researchInterest}".
+   - If the exact field does not exist, expand outward to the closest related department (e.g. "colliding black holes" becomes astrophysics, then physics; "Ottoman economic history" becomes Middle Eastern studies or history).
+   - You must always find a faculty page. If nothing specific exists, find the closest general department page.
+2. Read the faculty page once to get professor names and profile URLs.
+3. Return ALL professors you find on the page (up to 40).
+
+Do NOT visit any individual professor pages.
+
+Return ONLY JSON:
+{
+  "department": "Department Name",
+  "professors": [
+    {"name": "Full Name", "profile_url": "https://... or null"}
+  ]
+}`,
+      },
+    ],
+  });
+
+  const raw = extractText(res.content);
+  const parsed = await robustJson<{ department: string; professors: ProfessorStub[] }>(
+    raw,
+    'Extract the department name and professor list. Return JSON: {"department": "...", "professors": [{"name": "...", "profile_url": "..."}]}'
+  );
+
+  // Deduplicate stubs by normalized name.
+  const seen = new Set<string>();
+  const deduped = (parsed.professors ?? []).filter(stub => {
+    const key = (stub.name ?? "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // Shuffle server-side so each run draws a different random sample.
+  return {
+    stubs: shuffleArray(deduped),
+    department: parsed.department ?? researchInterest,
+  };
+}
+
+// Phase 2: One Haiku call per professor, each starting with a fresh small context.
+// Finds their lab/research page and extracts profile info. Returns null if the professor
+// does not have enough substantive research content to include.
+async function enrichOneProfessor(
+  stub: ProfessorStub,
+  university: string,
+  department: string
+): Promise<Omit<EnrichedProfessor, "university"> | null> {
+  try {
+    const res = await anthropic.messages.create({
+      model: HAIKU,
+      max_tokens: 1000,
+      tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
+      system:
+        "You extract professor research profiles from web pages. Return ONLY valid JSON. Use at most 1 web search.",
+      messages: [
+        {
+          role: "user",
+          content: `Find the research profile for Professor ${stub.name} at ${university}.
+${stub.profile_url ? `Start with: ${stub.profile_url}` : `Search: "${stub.name} ${university} research"`}
+
+Look for their lab page, personal research page, or Google Scholar profile.
+Preference order: lab page > Google Scholar > department bio.
+
+Extract:
+- email (string or null)
+- title (string or null, e.g. "Assistant Professor", "Associate Professor", "Professor")
+- description (2-3 sentences of CURRENT research: specific projects, methods, topics. A job title or department name does not count. If you cannot write 2 substantive sentences, return null for the whole record.)
+- research_areas (array of up to 5 keyword strings)
+- source_type (one of: "lab_page", "google_scholar", "profile_page_only")
+- profile_url (the URL where you found the best research information, or null)
+
+Return ONLY JSON:
+{"email": null, "title": "...", "description": "...", "research_areas": ["..."], "source_type": "...", "profile_url": "..."}
+
+If you cannot find substantive research information, return: null`,
+        },
+      ],
+    });
+
+    const raw = extractText(res.content);
+    const trimmed = raw.trim();
+    if (trimmed === "null" || trimmed === "" || trimmed === "{}") return null;
+
+    const parsed = await robustJson<{
+      email: string | null;
+      title: string | null;
+      description: string | null;
+      research_areas: string[];
+      source_type: string;
+      profile_url: string | null;
+    }>(
+      raw,
+      'Extract professor profile. Return JSON: {"email": null, "title": "...", "description": "...", "research_areas": [...], "source_type": "...", "profile_url": "..."}'
+    );
+
+    if (!parsed.description || parsed.description.trim().length < 30) return null;
+
+    return {
+      name: stub.name,
+      email: parsed.email ?? null,
+      title: parsed.title ?? null,
+      department,
+      profile_url: parsed.profile_url ?? stub.profile_url ?? null,
+      description: parsed.description,
+      research_areas: Array.isArray(parsed.research_areas) ? parsed.research_areas : [],
+      source_type: parsed.source_type ?? "profile_page_only",
+    };
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -73,19 +232,16 @@ export async function POST(request: Request) {
 
   const { data: userData } = await supabase
     .from("users")
-    .select("plan, searches_used")
+    .select("searches_remaining")
     .eq("id", user.id)
     .single();
 
-  const plan = ((userData?.plan ?? "free") as Plan);
-  const searchLimit = PLAN_LIMITS[plan].searches;
-  const searchesUsed = userData?.searches_used ?? 0;
-  const remaining = searchLimit - searchesUsed;
+  const remaining = userData?.searches_remaining ?? 0;
   const requestedCount = campaign.professor_count ?? 5;
 
   if (remaining <= 0) {
     return new Response(
-      JSON.stringify({ error: "You have used all your professor scouting credits. Upgrade to scout more professors." }),
+      JSON.stringify({ error: "No professor search credits remaining. Buy more to continue." }),
       { status: 403 }
     );
   }
@@ -100,92 +256,106 @@ export async function POST(request: Request) {
   const stream = new ReadableStream({
     async start(controller) {
       try {
-        // ── Steps 1-3: Sonnet finds faculty, enriches, and builds professor list ─
         const targetCount = campaign.professor_count ?? 5;
+        // Enrich a small buffer of stubs in Phase 2; two rounds so most runs never
+        // touch the reserve stubs, avoiding wasted web searches.
+        const fetchCount = Math.min(targetCount + 3, 18);
 
         controller.enqueue(sse({ type: "progress", message: "Finding professors..." }));
 
-        const step123Res = await anthropic.messages.create({
-          model: SONNET,
-          max_tokens: 8192,
-          tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
-          system:
-            "You are a research assistant building professor lists for student outreach. Return ONLY a valid JSON array with no markdown fences, no prose, no explanation.",
-          messages: [
-            {
-              role: "user",
-              content: `You are building a list of up to ${targetCount} professors for a student research outreach campaign.
+        // Phase 1 and the seen-professors query run in parallel — zero added latency.
+        // seenNamesSet contains normalized names of every professor this user has
+        // already been shown across all past campaigns so we can exclude them.
+        const [{ stubs, department }, seenNamesSet] = await Promise.all([
+          findFacultyStubs(campaign.university, campaign.research_interest),
+          (async () => {
+            const { data: pastCampaigns } = await supabase
+              .from("campaigns")
+              .select("id")
+              .eq("user_id", user.id)
+              .neq("id", campaignId);
+            const pastIds = (pastCampaigns ?? []).map((c) => c.id);
+            if (pastIds.length === 0) return new Set<string>();
+            const { data: pastProfs } = await supabase
+              .from("professors")
+              .select("name")
+              .in("campaign_id", pastIds);
+            return new Set((pastProfs ?? []).map((p) => normalizeName(p.name)));
+          })(),
+        ]);
 
-Student wants to research: ${campaign.research_interest}
-University: ${campaign.university}
+        if (stubs.length === 0) {
+          controller.enqueue(
+            sse({ type: "error", message: "Could not find any professors at this university for this research area." })
+          );
+          controller.close();
+          return;
+        }
 
-Follow these steps in order:
+        // Filter out professors the student has already seen in previous campaigns.
+        // The stubs are pre-shuffled, so slicing to fetchCount is a fair random sample.
+        const freshStubs = seenNamesSet.size > 0
+          ? stubs.filter((stub) => !seenNamesSet.has(normalizeName(stub.name)))
+          : stubs;
 
-Step 1 — Find the best faculty page:
-Search for the most relevant department, research group, or faculty directory at ${campaign.university} that matches ${campaign.research_interest}.
+        if (freshStubs.length === 0) {
+          controller.enqueue(
+            sse({ type: "error", message: "All professors found for this field at this university have already appeared in a previous campaign. Try a different university or research area." })
+          );
+          controller.close();
+          return;
+        }
 
-Critical rules for this step:
-- You do not need an exact match. Find the closest thing.
-- If the exact field does not exist, expand outward. "Colliding black holes" becomes astrophysics, then physics. "Middle Ages" becomes medieval history, then history. "Ottoman economic history" becomes Middle Eastern studies or history. Use your judgment.
-- You must always find a faculty page. Returning nothing is not allowed. If nothing specific exists, find the closest general department page at this university.
-- Read the page once you find it.
+        const stubsToEnrich = freshStubs.slice(0, fetchCount);
 
-Step 2 — Build the professor list lazily:
-From the faculty page you found in Step 1, randomly select ${targetCount} professors. Do not read every professor on the page. Only pick ${targetCount} at random to start.
+        // Phase 2: Enrich professors in batches to avoid unnecessary web searches.
+        // Round 1: enrich targetCount+1 stubs in parallel (one extra buffer for failures).
+        // Round 2: only if round 1 didn't yield enough, enrich remaining stubs.
+        controller.enqueue(sse({ type: "progress", message: "Researching professors..." }));
 
-For each of your ${targetCount} selected professors:
-- Search for their name and university to find their research page, lab page, or Google Scholar profile. Prefer lab pages over Google Scholar over bio pages.
-- Read it and assess whether you can write at least 2 substantive sentences about what they are currently working on. A job title or department name does not count.
-- If yes, include them.
-- If no, discard them and go back to the faculty page to pick one replacement professor you have not tried yet. Fetch their research page and assess them the same way.
-- Repeat until you have ${targetCount} professors with substantive descriptions, or you have exhausted all professors on the faculty page.
-- If fewer than ${targetCount} professors pass, return however many you found. Never pad the list with thin entries.
-
-Return ONLY a JSON array with no markdown fences, no prose, no explanation.
-Each object must have exactly these fields:
-- name (string)
-- email (string or null)
-- title (string or null, e.g. "Assistant Professor")
-- department (string, the name of the department or research group from the faculty page you found in Step 1, e.g. "Computer Science", "Mathematics", "Mechanical Engineering")
-- profile_url (string or null)
-- description (string, 2-3 sentences of current research, never just a title or department name)
-- research_areas (array of up to 5 keyword strings)
-- source_type (one of: "lab_page", "google_scholar", "profile_page_only")
-
-If absolutely no professors had enough information, return [].`,
-            },
-          ],
-        });
-
-        type EnrichedProfessor = {
-          name: string;
-          email: string | null;
-          title: string | null;
-          department: string | null;
-          profile_url: string | null;
-          description: string | null;
-          research_areas: string[];
-          source_type?: string;
-          university: string;
-        };
-
-        const raw123 = extractText(step123Res.content);
-        const parsedProfessors = await robustJson<Array<Omit<EnrichedProfessor, "university"> & { source_type?: string }>>(
-          raw123,
-          "Extract professor records from this text and return a JSON array. Each object must have: name (string), email (string or null), title (string or null), department (string or null), profile_url (string or null), description (string), research_areas (array of strings), source_type (string)."
+        const firstBatch = stubsToEnrich.slice(0, Math.min(targetCount + 1, stubsToEnrich.length));
+        const firstBatchResults = await Promise.all(
+          firstBatch.map((stub) => enrichOneProfessor(stub, campaign.university, department))
+        );
+        const validFirst = firstBatchResults.filter(
+          (p): p is Omit<EnrichedProfessor, "university"> => p !== null
         );
 
-        console.log(`[EXTRACT] Found ${parsedProfessors.length} professors with substantive descriptions (target: ${targetCount})`);
-        for (const prof of parsedProfessors) {
+        let allValid = validFirst;
+        const remainingStubs = stubsToEnrich.slice(firstBatch.length);
+        if (validFirst.length < targetCount && remainingStubs.length > 0) {
+          const needed = targetCount - validFirst.length;
+          const secondBatchResults = await Promise.all(
+            remainingStubs.slice(0, needed + 1).map((stub) =>
+              enrichOneProfessor(stub, campaign.university, department)
+            )
+          );
+          const validSecond = secondBatchResults.filter(
+            (p): p is Omit<EnrichedProfessor, "university"> => p !== null
+          );
+          allValid = [...validFirst, ...validSecond];
+        }
+
+        const enrichedProfessors: EnrichedProfessor[] = allValid
+          .slice(0, targetCount)
+          .map((p) => ({ ...p, university: campaign.university }));
+
+        console.log(
+          `[EXTRACT] Found ${enrichedProfessors.length} professors with substantive descriptions (target: ${targetCount})`
+        );
+        for (const prof of enrichedProfessors) {
           console.log(`[SOURCE] ${prof.name} -- ${prof.source_type ?? "profile_page_only"}`);
         }
 
-        const enrichedProfessors: EnrichedProfessor[] = parsedProfessors.map((p) => ({
-          ...p,
-          university: campaign.university,
-        }));
+        if (enrichedProfessors.length === 0) {
+          controller.enqueue(
+            sse({ type: "error", message: "Could not find substantive research information for any professors in this area." })
+          );
+          controller.close();
+          return;
+        }
 
-        // ── Step 4: Sonnet ranks all professors by fit ─────────────────────────
+        // Phase 3: Ranking and title generation in parallel — both use Haiku.
         controller.enqueue(sse({ type: "progress", message: "Matching professors to your profile..." }));
 
         const profileSummary = profile
@@ -202,14 +372,24 @@ If absolutely no professors had enough information, return [].`,
               .join("\n")
           : "No profile provided.";
 
-        const step4Res = await anthropic.messages.create({
-          model: SONNET,
-          max_tokens: 4096,
-          system: "You rank professors for student research outreach. Return ONLY a valid JSON array, no text, no explanation.",
-          messages: [
-            {
-              role: "user",
-              content: `Score each professor's fit for this student's research outreach on a scale of 0-100.
+        const rankingPayload = enrichedProfessors.map((p) => ({
+          name: p.name,
+          title: p.title,
+          email: p.email,
+          description: p.description,
+          research_areas: p.research_areas,
+        }));
+
+        const [rankingRes, titleRes] = await Promise.all([
+          anthropic.messages.create({
+            model: HAIKU,
+            max_tokens: 800,
+            system:
+              "You rank professors for student research outreach. Return ONLY a valid JSON array, no text, no explanation.",
+            messages: [
+              {
+                role: "user",
+                content: `Score each professor's fit for this student on a scale of 0-100.
 
 Use this calibration:
 - 90-100: Excellent fit. Strong research overlap, closely matching background, active lab, email available.
@@ -217,7 +397,7 @@ Use this calibration:
 - 70-79: Decent fit. Partial overlap or background mismatch, still worth contacting.
 - Below 70: Weak fit. Poor overlap, irrelevant background, or missing critical information. Mark these but do not exclude them.
 
-Do not compress scores into a narrow band. If most professors are strong, most should score in the 85-99 range. If most are mediocre, most should sit in the 70-85 range. Give each professor a score that reflects their individual fit. Two professors with meaningfully different research overlap must receive meaningfully different scores.
+Do not compress scores into a narrow band. Give each professor a score that reflects their individual fit. Two professors with meaningfully different research overlap must receive meaningfully different scores.
 
 Student profile:
 ${profileSummary}
@@ -226,60 +406,50 @@ Research interest: ${campaign.research_interest}
 Availability: ${campaign.availability ?? "flexible"}
 
 Ranking criteria (in order of weight):
-1. Research overlap: read each professor's description field carefully and score based on how directly their stated research aligns with the student's interest. Professors whose description is null score no higher than 60 on this criterion.
+1. Research overlap: read each professor's description field carefully and score based on how directly their stated research aligns with the student's interest.
 2. Student background fit: how well the student's coursework, experience, and skills match the professor's research area.
 3. Seniority: Assistant and Associate Professors score higher than Full Professors (more open to student help).
-4. Lab activity: infer from description quality — specific named projects or methods mentioned indicate an active lab.
+4. Lab activity: infer from description quality — specific named projects or methods indicate an active lab.
 5. Email availability: no email address means deprioritize.
 
 Professors:
-${JSON.stringify(enrichedProfessors, null, 2)}
+${JSON.stringify(rankingPayload)}
 
-Return ONLY a JSON array with all original fields plus "fit_score" (integer 0-100).`,
-            },
-          ],
-        });
-
-        const raw4 = extractText(step4Res.content);
-        const rankedProfessors = await robustJson<Array<Record<string, unknown>>>(
-          raw4,
-          "Extract the professor ranking data from this text and return it as a JSON array. Each object should include all professor fields plus fit_score (integer 0-100)."
-        );
-
-        // Sort descending by raw fit score, then drop professors below the 70% threshold.
-        rankedProfessors.sort((a, b) => {
-          const sa = typeof a.fit_score === "number" ? a.fit_score : 0;
-          const sb = typeof b.fit_score === "number" ? b.fit_score : 0;
-          return sb - sa;
-        });
-
-        const qualifiedProfessors = rankedProfessors.filter(
-          (p) => typeof p.fit_score === "number" && p.fit_score >= 70
-        );
-
-        // Use qualifiedProfessors from here on — scores are Claude's honest 0-100 ratings.
-        rankedProfessors.length = 0;
-        rankedProfessors.push(...qualifiedProfessors);
-
-        // ── Step 5: Haiku generates the campaign title ─────────────────────────
-        const step5Res = await anthropic.messages.create({
-          model: HAIKU,
-          max_tokens: 256,
-          system: "You generate concise campaign titles. Return ONLY a valid JSON object.",
-          messages: [
-            {
-              role: "user",
-              content: `Generate a campaign title. Format: "{University short name} {full research subfield}". Examples: "JHU Behavioral Economics", "Columbia Condensed Matter Physics", "Berkeley Astrophysics", "MIT Machine Learning". For famous universities use the most recognizable short form (Berkeley, MIT, Caltech, Harvard, Stanford, Princeton, Yale, Columbia, Penn, JHU, Duke, Northwestern, Chicago). For others use standard abbreviations (UIUC, UMich, etc.). Include the full subfield name. Drop any timeline, the word "Research", and all other descriptors.
+Return ONLY a JSON array of name and score: [{"name": "Full Name", "fit_score": 85}, ...]`,
+              },
+            ],
+          }),
+          anthropic.messages.create({
+            model: HAIKU,
+            max_tokens: 256,
+            system: "You generate concise campaign titles. Return ONLY a valid JSON object.",
+            messages: [
+              {
+                role: "user",
+                content: `Generate a campaign title. Format: "{University short name} {full research subfield}". Examples: "JHU Behavioral Economics", "Columbia Condensed Matter Physics", "Berkeley Astrophysics", "MIT Machine Learning". For famous universities use the most recognizable short form (Berkeley, MIT, Caltech, Harvard, Stanford, Princeton, Yale, Columbia, Penn, JHU, Duke, Northwestern, Chicago). For others use standard abbreviations (UIUC, UMich, etc.). Include the full subfield name. Drop any timeline, the word "Research", and all other descriptors.
 
 University: ${campaign.university}
 Research interest: ${campaign.research_interest}
 
 Return ONLY JSON: {"title": "..."}`,
-            },
-          ],
-        });
+              },
+            ],
+          }),
+        ]);
 
-        const raw5 = extractText(step5Res.content);
+        const raw4 = extractText(rankingRes.content);
+        const scoreList = await robustJson<Array<{ name: string; fit_score: number }>>(
+          raw4,
+          'Extract the ranking data. Return a JSON array: [{"name": "...", "fit_score": 85}, ...]'
+        );
+
+        const fitScoreMap = new Map(scoreList.map((s) => [s.name, s.fit_score]));
+
+        const finalProfessors = enrichedProfessors
+          .map((p) => ({ ...p, fit_score: fitScoreMap.get(p.name) ?? 50 }))
+          .sort((a, b) => b.fit_score - a.fit_score);
+
+        const raw5 = extractText(titleRes.content);
         let title: string;
         try {
           const result = await robustJson<{ title: string }>(
@@ -288,15 +458,13 @@ Return ONLY JSON: {"title": "..."}`,
           );
           title = result.title;
         } catch {
-          // Synthesize a fallback title from known inputs
           const shortUniv = campaign.university.split(" ").pop() ?? campaign.university;
           title = `${shortUniv} ${campaign.research_interest}`;
         }
 
-        // ── Save results ───────────────────────────────────────────────────────
         controller.enqueue(sse({ type: "progress", message: "Saving results..." }));
 
-        const rows = rankedProfessors.map((p) => ({
+        const rows = finalProfessors.map((p) => ({
           campaign_id: campaignId,
           name: String(p.name ?? ""),
           department: p.department ? String(p.department) : null,
@@ -316,14 +484,16 @@ Return ONLY JSON: {"title": "..."}`,
 
         await supabase.from("campaigns").update({ title, status: "active" }).eq("id", campaignId);
 
-        await supabase
-          .from("users")
-          .update({ searches_used: searchesUsed + requestedCount })
-          .eq("id", user.id);
+        await supabase.rpc("decrement_searches_by", { uid: user.id, amount: requestedCount });
 
         controller.enqueue(sse({ type: "done", title }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error";
+        try {
+          await supabase.from("campaigns").update({ status: "error" }).eq("id", campaignId);
+        } catch {
+          // best-effort; do not mask the original error
+        }
         controller.enqueue(sse({ type: "error", message: msg }));
       }
 

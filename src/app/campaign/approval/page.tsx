@@ -4,10 +4,9 @@ const DEV_OVERRIDE_RECIPIENT = true;
 
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Pencil, SkipForward, Send, Building2, ArrowLeft } from "lucide-react";
+import { Check, Pencil, SkipForward, Building2, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { Email } from "@/lib/types";
-import { PLAN_LIMITS, type Plan } from "@/lib/plans";
 
 type EmailState = "pending" | "approved" | "skipped";
 type CardPhase = "idle" | "sent" | "exiting" | "entering";
@@ -30,7 +29,9 @@ function ApprovalContent() {
   const [loadingDrafts, setLoadingDrafts] = useState(true);
   const [draftError, setDraftError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
-  const [sendLimit, setSendLimit] = useState<number>(Infinity);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [emailsRemaining, setEmailsRemaining] = useState<number>(Infinity);
+  const [draftWarnings, setDraftWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     if (!campaignId) {
@@ -39,18 +40,16 @@ function ApprovalContent() {
       return;
     }
 
+    const controller = new AbortController();
+
     const loadDrafts = async () => {
       try {
-        const fetchDrafts = fetch("/api/emails/draft", {
+        const draftsRes = await fetch("/api/emails/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ campaignId }),
+          signal: controller.signal,
         });
-        const fetchProfs = DEV_OVERRIDE_RECIPIENT
-          ? fetch(`/api/professors?campaignId=${campaignId}`)
-          : Promise.resolve(null);
-
-        const [draftsRes, profsRes] = await Promise.all([fetchDrafts, fetchProfs]);
         const data = await draftsRes.json();
         if (!draftsRes.ok) throw new Error(data.error ?? "Failed to generate drafts");
 
@@ -58,28 +57,37 @@ function ApprovalContent() {
         setEmails(emailList);
         setStates(Object.fromEntries(emailList.map((e) => [e.id, "pending" as EmailState])));
         setBodies(Object.fromEntries(emailList.map((e) => [e.id, e.body ?? ""])));
-        if (DEV_OVERRIDE_RECIPIENT && profsRes) {
-          const profData = await profsRes.json();
-          const profEmailMap: Record<string, string> = Object.fromEntries(
-            (profData.professors ?? []).map((p: { id: string; email: string | null }) => [p.id, p.email ?? ""])
-          );
-          setRecipients(Object.fromEntries(emailList.map((e) => [e.id, profEmailMap[e.professor_id ?? ""] ?? ""])));
+        setRecipients(Object.fromEntries(emailList.map((e) => [e.id, e.email ?? ""])));
+
+        const warnings: string[] = [];
+        const failed = (data.failed_count as number | null) ?? 0;
+        if (failed > 0) {
+          warnings.push(`${failed} email${failed === 1 ? "" : "s"} could not be drafted and ${failed === 1 ? "was" : "were"} skipped.`);
         }
+        const dupes = (data.duplicate_skipped as string[] | null) ?? [];
+        if (dupes.length > 0) {
+          warnings.push(
+            `${dupes.length === 1 ? "Skipped" : "Skipped"} ${dupes.join(", ")} — already emailed in a previous campaign.`
+          );
+        }
+        if (warnings.length > 0) setDraftWarnings(warnings);
       } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") return;
         setDraftError(err instanceof Error ? err.message : "Failed to load drafts");
       } finally {
-        setLoadingDrafts(false);
+        if (!controller.signal.aborted) setLoadingDrafts(false);
       }
     };
 
     loadDrafts();
+    return () => controller.abort();
   }, [campaignId]);
 
   useEffect(() => {
     fetch("/api/usage")
       .then((r) => r.json())
-      .then((d: { plan: Plan }) => {
-        setSendLimit(PLAN_LIMITS[d.plan]?.emails ?? Infinity);
+      .then((d: { emails_remaining: number }) => {
+        setEmailsRemaining(d.emails_remaining ?? Infinity);
       })
       .catch(() => {});
   }, []);
@@ -137,7 +145,7 @@ function ApprovalContent() {
       <div className="min-h-screen flex items-center justify-center px-6 animate-fade-in">
         <div className="text-center max-w-sm">
           <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-5" style={{ background: "rgba(103,142,141,0.1)" }}>
-            <Send className="w-6 h-6" style={{ color: "#678E8D" }} />
+            <img src="/icons/confirmation.png" alt="" className="w-6 h-6" />
           </div>
           <h2 className="text-xl font-medium mb-2" style={{ color: "var(--ink)", letterSpacing: "-0.03em" }}>
             You're all set
@@ -164,12 +172,13 @@ function ApprovalContent() {
   const reviewed = Object.values(states).filter((s) => s !== "pending").length;
   const total = emails.length;
   const approvedCount = Object.values(states).filter((s) => s === "approved").length;
-  const atSendLimit = approvedCount >= sendLimit;
+  const atSendLimit = emailsRemaining <= 0;
 
   const handleApprove = async () => {
     if (!email || cardPhase !== "idle" || sendingId || atSendLimit) return;
     const isLast = current >= emails.length - 1;
     setSendingId(email.id);
+    setSendError(null);
 
     try {
       const res = await fetch("/api/emails/send", {
@@ -182,22 +191,22 @@ function ApprovalContent() {
       });
       const data = await res.json();
       if (!res.ok) {
-        console.error("[approve] send failed:", res.status, data);
+        setSendError(data.error ?? `Send failed (${res.status})`);
         setSendingId(null);
         return;
       }
       if (!data.ok) {
-        console.error("[approve] send returned not-ok:", data);
+        setSendError(data.error ?? "Send failed");
         setSendingId(null);
         return;
       }
-      console.log("[approve] send succeeded:", data);
     } catch (err) {
-      console.error("[approve] network error during send:", err);
+      setSendError(err instanceof Error ? err.message : "Network error");
       setSendingId(null);
       return;
     }
 
+    setEmailsRemaining((prev) => Math.max(0, prev - 1));
     setStates((prev) => ({ ...prev, [email.id]: "approved" }));
     setExitDir("left");
     setCardPhase("sent");
@@ -211,6 +220,7 @@ function ApprovalContent() {
   const handleSkip = () => {
     if (!email || cardPhase !== "idle") return;
     const isLast = current >= emails.length - 1;
+    setSendError(null);
     setStates((prev) => ({ ...prev, [email.id]: "skipped" }));
     setExitDir("right");
     advanceCard(current + 1, isLast);
@@ -236,9 +246,9 @@ function ApprovalContent() {
 
   const handleApproveAll = async () => {
     const pending = emails.filter((e) => states[e.id] === "pending");
-    let approvedSoFar = approvedCount;
+    let creditsLeft = emailsRemaining;
     for (const e of pending) {
-      if (approvedSoFar >= sendLimit) break;
+      if (creditsLeft <= 0) break;
       try {
         const res = await fetch("/api/emails/send", {
           method: "POST",
@@ -251,7 +261,8 @@ function ApprovalContent() {
         } else {
           console.log("[approveAll] sent", e.id, data);
           setStates((prev) => ({ ...prev, [e.id]: "approved" }));
-          approvedSoFar++;
+          creditsLeft--;
+          setEmailsRemaining((prev) => Math.max(0, prev - 1));
         }
       } catch (err) {
         console.error("[approveAll] network error for", e.id, err);
@@ -367,6 +378,25 @@ function ApprovalContent() {
         </div>
       </div>
 
+      {/* Draft warnings (partial failure or duplicate skips) */}
+      {draftWarnings.length > 0 && (
+        <div className="mb-4 space-y-1.5">
+          {draftWarnings.map((w, i) => (
+            <div
+              key={i}
+              className="px-4 py-2.5 rounded-xl text-xs"
+              style={{
+                background: "rgba(234,179,8,0.07)",
+                color: "#b45309",
+                border: "1px solid rgba(234,179,8,0.18)",
+              }}
+            >
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Email card */}
       <div className="rounded-xl border overflow-hidden" style={cardStyle}>
         {/* Professor header */}
@@ -463,13 +493,23 @@ function ApprovalContent() {
         </div>
       </div>
 
+      {/* Send error banner */}
+      {sendError && cardPhase === "idle" && editing !== email.id && (
+        <div
+          className="mt-4 px-4 py-3 rounded-xl text-xs font-medium text-center"
+          style={{ background: "rgba(248,113,113,0.08)", color: "#f87171", border: "1px solid rgba(248,113,113,0.2)" }}
+        >
+          {sendError}
+        </div>
+      )}
+
       {/* Send limit banner */}
       {atSendLimit && cardPhase === "idle" && editing !== email.id && (
         <div
           className="mt-4 px-4 py-3 rounded-xl text-xs font-medium text-center"
           style={{ background: "rgba(103,142,141,0.08)", color: "var(--ink-secondary)", border: "1px solid rgba(103,142,141,0.18)" }}
         >
-          Send limit reached for your plan. Upgrade to send more emails.
+          No email credits remaining. Buy more to send more emails.
         </div>
       )}
 

@@ -10,6 +10,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "priceId and plan are required" }, { status: 400 });
   }
 
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    console.error("[stripe/checkout] STRIPE_SECRET_KEY is not configured");
+    return NextResponse.json({ error: "Stripe is not configured" }, { status: 500 });
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -17,14 +23,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const stripe = new Stripe(stripeKey);
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
       client_reference_id: user.id,
       metadata: { plan, userId: user.id },
-      success_url: `${origin}/dashboard`,
+      success_url: `${origin}/dashboard?upgraded={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/dashboard`,
     });
 

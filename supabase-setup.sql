@@ -179,3 +179,128 @@ create or replace function increment_emails_sent(uid uuid)
 returns void language sql security definer as $$
   update public.users set emails_sent = coalesce(emails_sent, 0) + 1 where id = uid;
 $$;
+
+-- ─────────────────────────────────────────────
+-- CREDIT BALANCE COLUMNS — run after section 14
+-- ─────────────────────────────────────────────
+
+-- 15. Add explicit remaining-balance columns
+alter table public.users add column if not exists searches_remaining int;
+alter table public.users add column if not exists emails_remaining int;
+
+-- Initialize existing users from their current plan and usage
+update public.users
+set
+  searches_remaining = greatest(0,
+    case
+      when plan = 'pro'  then 30
+      when plan = 'max'  then 75
+      else 3
+    end - coalesce(searches_used, 0)
+  ),
+  emails_remaining = greatest(0,
+    case
+      when plan = 'pro'  then 30
+      when plan = 'max'  then 75
+      else 2
+    end - coalesce(emails_sent, 0)
+  )
+where searches_remaining is null;
+
+-- Default for brand-new free users
+alter table public.users alter column searches_remaining set default 3;
+alter table public.users alter column emails_remaining set default 2;
+
+-- 16. Atomic helpers for the credit-balance model
+create or replace function increment_credits(uid uuid, searches_delta int, emails_delta int)
+returns void language sql security definer as $$
+  update public.users
+  set
+    searches_remaining = coalesce(searches_remaining, 0) + searches_delta,
+    emails_remaining   = coalesce(emails_remaining,   0) + emails_delta
+  where id = uid;
+$$;
+
+create or replace function decrement_searches_by(uid uuid, amount int)
+returns void language sql security definer as $$
+  update public.users
+  set searches_remaining = greatest(0, coalesce(searches_remaining, 0) - amount)
+  where id = uid;
+$$;
+
+create or replace function decrement_emails_remaining(uid uuid)
+returns void language sql security definer as $$
+  update public.users
+  set emails_remaining = greatest(0, coalesce(emails_remaining, 0) - 1)
+  where id = uid;
+$$;
+
+-- ─────────────────────────────────────────────
+-- PURCHASE IDEMPOTENCY — run after section 16
+-- ─────────────────────────────────────────────
+
+-- 19. Purchases table — one row per completed Stripe checkout session.
+--     Primary key on stripe_session_id ensures credits are applied at most once
+--     regardless of whether the webhook or verify-session fires first.
+create table if not exists public.purchases (
+  stripe_session_id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  plan text not null,
+  searches_added int not null,
+  emails_added int not null,
+  credited_at timestamptz not null default now()
+);
+
+alter table public.purchases enable row level security;
+create policy "own" on public.purchases for select using (auth.uid() = user_id);
+
+-- Atomically record a purchase and apply credits exactly once.
+-- Returns true if credits were applied, false if the session was already processed.
+create or replace function apply_purchase(
+  p_session_id text,
+  p_user_id uuid,
+  p_plan text,
+  p_searches int,
+  p_emails int
+) returns boolean language plpgsql security definer as $$
+declare
+  v_rows int;
+begin
+  insert into public.purchases (stripe_session_id, user_id, plan, searches_added, emails_added)
+  values (p_session_id, p_user_id, p_plan, p_searches, p_emails)
+  on conflict (stripe_session_id) do nothing;
+
+  get diagnostics v_rows = row_count;
+
+  if v_rows > 0 then
+    update public.users
+    set
+      searches_remaining = coalesce(searches_remaining, 0) + p_searches,
+      emails_remaining   = coalesce(emails_remaining,   0) + p_emails
+    where id = p_user_id;
+    return true;
+  end if;
+
+  return false;
+end;
+$$;
+
+-- ─────────────────────────────────────────────
+-- BOUNCE TRACKING — run after the above
+-- ─────────────────────────────────────────────
+
+-- 17. emails.email column (caches the professor address at send time; added post-launch)
+alter table public.emails add column if not exists email text;
+
+-- 18. Bounces table — one row per bounced email, used for credit refund audit
+create table if not exists public.bounces (
+  id uuid primary key default gen_random_uuid(),
+  email_id uuid references public.emails(id) on delete cascade unique,
+  bounced_at timestamptz not null default now(),
+  credit_refunded boolean not null default false,
+  refunded_at timestamptz
+);
+
+alter table public.bounces enable row level security;
+create policy "own" on public.bounces for all
+  using (email_id in (select id from public.emails where user_id = auth.uid()));
