@@ -19,9 +19,7 @@ async function signInWithGoogle(redirectTo: string) {
 async function handleGoogleLogin() {
   const dest = "/dashboard";
   document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
-  await signInWithGoogle(
-    `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`
-  );
+  await signInWithGoogle(`${window.location.origin}/auth/callback`);
 }
 
 function Mark({ height = 26 }: { height?: number }) {
