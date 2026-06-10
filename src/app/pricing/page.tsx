@@ -19,13 +19,19 @@ async function signInWithGoogle(redirectTo: string) {
 }
 
 async function handleGoogleLogin() {
-  await signInWithGoogle(`${window.location.origin}/auth/callback`);
+  const dest = "/dashboard";
+  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle(
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`
+  );
 }
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
-  document.cookie = `squibble_plan_intent=${plan}; path=/; max-age=300; SameSite=Lax`;
-  const next = encodeURIComponent(`/api/stripe/redirect?plan=${plan}`);
-  await signInWithGoogle(`${window.location.origin}/auth/callback?next=${next}`);
+  const dest = `/api/stripe/redirect?plan=${plan}`;
+  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle(
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`
+  );
 }
 
 function Check() {

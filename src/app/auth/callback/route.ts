@@ -10,20 +10,27 @@ export async function GET(request: Request) {
   const googleError = searchParams.get("error");
 
   // Determine post-auth destination.
-  // Primary: ?next= embedded in the redirectTo URL (set by signInWithOAuth in the pricing page).
-  // Fallback: squibble_plan_intent cookie set before the OAuth redirect.
+  // Priority 1: ?next= embedded in the redirectTo URL (set by signInWithOAuth).
+  // Priority 2: squibble_auth_next cookie — full destination path encoded before OAuth began.
+  // Priority 3: squibble_plan_intent cookie — legacy fallback from older code paths.
+  // Default: /dashboard.
   const rawNext = searchParams.get("next");
   const cookieStore = await cookies();
+  const rawCookieNext = cookieStore.get("squibble_auth_next")?.value;
+  const cookieNext = rawCookieNext ? decodeURIComponent(rawCookieNext) : null;
   const cookiePlan = cookieStore.get("squibble_plan_intent")?.value;
 
   let next: string;
   if (rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")) {
     next = rawNext;
+  } else if (cookieNext && cookieNext.startsWith("/") && !cookieNext.startsWith("//")) {
+    next = cookieNext;
+  } else if (cookiePlan === "pro" || cookiePlan === "max") {
+    next = `/api/stripe/redirect?plan=${cookiePlan}`;
   } else {
-    const plan = (cookiePlan === "pro" || cookiePlan === "max") ? cookiePlan : null;
-    next = plan ? `/api/stripe/redirect?plan=${plan}` : "/dashboard";
+    next = "/dashboard";
   }
-  console.log("[auth/callback] destination — rawNext:", rawNext, "cookiePlan:", cookiePlan, "resolved next:", next);
+  console.log("[auth/callback] destination — rawNext:", rawNext, "cookieNext:", cookieNext, "cookiePlan:", cookiePlan, "resolved next:", next);
 
   console.log("[auth/callback] incoming params:", {
     hasCode: !!code,
@@ -126,6 +133,7 @@ export async function GET(request: Request) {
 
     console.log("[auth/callback] redirecting to:", `${origin}${next}`);
     const successResponse = NextResponse.redirect(`${origin}${next}`);
+    successResponse.cookies.set("squibble_auth_next", "", { maxAge: 0, path: "/" });
     successResponse.cookies.set("squibble_plan_intent", "", { maxAge: 0, path: "/" });
     return successResponse;
   } catch (err) {

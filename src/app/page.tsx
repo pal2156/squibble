@@ -23,16 +23,19 @@ async function signInWithGoogle(redirectTo: string) {
 }
 
 async function handleGoogleLogin() {
-  await signInWithGoogle(`${window.location.origin}/auth/callback`);
+  const dest = "/dashboard";
+  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle(
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`
+  );
 }
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
-  // Set a cookie so auth/callback can read the plan server-side even if
-  // Supabase strips query params from the redirectTo URL.
-  document.cookie = `squibble_plan_intent=${plan}; path=/; max-age=300; SameSite=Lax`;
-  // Also embed the plan directly in the redirect URL as a simple param.
-  // auth/callback reads whichever arrives — URL param first, cookie as fallback.
-  await signInWithGoogle(`${window.location.origin}/auth/callback?plan=${plan}`);
+  const dest = `/api/stripe/redirect?plan=${plan}`;
+  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle(
+    `${window.location.origin}/auth/callback?next=${encodeURIComponent(dest)}`
+  );
 }
 
 // ─── Brand mark ────────────────────────────────────────────────
