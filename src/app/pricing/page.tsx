@@ -1,33 +1,45 @@
 "use client";
 
-import { createClient } from "@/lib/supabase/client";
 import "../landing.css";
 
-async function signInWithGoogle(redirectTo: string) {
-  const supabase = createClient();
-  await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      scopes: "email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
-      redirectTo,
-      queryParams: {
-        access_type: "offline",
-        prompt: "consent",
-      },
-    },
-  });
+function base64UrlEncode(bytes: Uint8Array): string {
+  let s = "";
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+}
+
+async function signInWithGoogle() {
+  const raw = new Uint8Array(64);
+  crypto.getRandomValues(raw);
+  const codeVerifier = base64UrlEncode(raw);
+
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+  const codeChallenge = base64UrlEncode(new Uint8Array(digest));
+
+  const redirectUri = `${window.location.origin}/auth/callback`;
+  document.cookie = `g_cv=${codeVerifier}; path=/; max-age=300; SameSite=Lax`;
+  document.cookie = `g_ruri=${encodeURIComponent(redirectUri)}; path=/; max-age=300; SameSite=Lax`;
+
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
+    access_type: "offline",
+    prompt: "consent",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  })}`;
 }
 
 async function handleGoogleLogin() {
-  const dest = "/dashboard";
-  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
-  await signInWithGoogle(`${window.location.origin}/auth/callback`);
+  document.cookie = `squibble_auth_next=${encodeURIComponent("/dashboard")}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle();
 }
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
-  const dest = `/api/stripe/redirect?plan=${plan}`;
-  document.cookie = `squibble_auth_next=${encodeURIComponent(dest)}; path=/; max-age=300; SameSite=Lax`;
-  await signInWithGoogle(`${window.location.origin}/auth/callback`);
+  document.cookie = `squibble_auth_next=${encodeURIComponent(`/api/stripe/redirect?plan=${plan}`)}; path=/; max-age=300; SameSite=Lax`;
+  await signInWithGoogle();
 }
 
 function Check() {
