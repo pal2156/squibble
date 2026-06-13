@@ -151,27 +151,30 @@ export async function POST(request: Request) {
 Paragraph structure:
 
 1. Who the student is and what they are asking for. Two sentences max. State name, year, school, and the ask directly.
-2. The connection to the professor's research. Vary how you enter the professor's work across emails. The entry point should differ each time: sometimes lead with something the student read or encountered, sometimes with a question the professor's work raises, sometimes with what surprised the student, sometimes with the result or implication of the research. The content must remain specific and grounded in the professor's actual work. A specific reference to a paper title or research detail is allowed only when it genuinely strengthens the paragraph. It is never required. Never invent details you are not certain about. Two to three sentences.
-3. The student's background in relation to this professor. Select at least two relevant pieces of the student's background and briefly connect each one to what this professor's lab does. If the professor runs a computational lab, connect the student's programming experience to that. If the work is more theoretical, lean on the mathematical background. If the work is experimental, frame the research experience accordingly. Do not list credentials in isolation. Every piece of background mentioned must be tied back to the professor. Two to three sentences.
-4. Availability and the ask. Soft and open, not transactional. Two to three sentences.
+2. The connection to the professor's research. This paragraph must open in a natural, conversational way that conveys genuine curiosity and discovery. It should feel like the student stumbled onto something that caught their interest, not like they are summarizing or analyzing the professor's work from a distance. Do not open with a thesis-style statement. The exact phrasing should vary across emails, but always feel like a real person talking about something they found genuinely compelling. Sometimes lead with something the student noticed or came across, sometimes with a question the professor's work opens up, sometimes with what surprised them about it. The content must stay specific and grounded in the professor's actual work. A specific paper title or research detail is fine only when it genuinely strengthens the paragraph. Never required. Never invent details you are not certain about. Two to three sentences.
+3. The student's background in relation to this professor. Pick at least two relevant pieces of the student's background and briefly connect each to what this professor's lab does. If the professor runs a computational lab, connect the student's programming experience to that. If the work is more theoretical, lean on the mathematical background. If the work is experimental, frame the research experience accordingly. Do not list credentials in isolation. Every piece of background mentioned must tie back to the professor. Two to three sentences.
+4. Availability and the ask. Friendly and direct, not formal or deferential. Two to three sentences.
 
 Rules:
 
 - Total length: under 200 words
 - Every paragraph: 2-3 sentences max, no exceptions
+- Tone: warm, genuine, and human throughout. The student should sound like a real person having a conversation, not like they are writing a cover letter or formal application. Confident but not arrogant.
+- Vocabulary: use plain language. Avoid academic jargon, essay-style phrasing, and words that feel unnecessarily elevated. Intelligent but not overwritten.
+- Conciseness: trim anything redundant. Say it once and move on.
 - Never use em dashes anywhere in the email
 - Never use phrases like "your work caught my attention," "your research stood out," "genuinely caught my attention," "most research I have encountered," "impressed by your work," or any variation that frames the professor's research as exceptional among everything the student has read
 - Never write "thank you for your time" or any close variant before the sign-off
-- Never use "would welcome" in any form (e.g., "I would welcome the chance," "I would welcome any involvement"). The closing sentence expressing interest in next steps must be direct and natural, not built on that construction
-- Never use phrases like "sits at the intersection of," "rigorous," "robust," "synergy," or anything that sounds like a LinkedIn bio
+- Never use "would welcome" in any form (e.g., "I would welcome the chance," "I would welcome any involvement"). The closing sentence expressing interest in next steps must be direct and natural.
+- Never use phrases like "sits at the intersection of," "rigorous," "robust," "synergy," or anything that sounds like a LinkedIn bio or performance review
 - Do not start consecutive sentences with "I"
 - The email must sound like it was written by a real undergraduate, not assembled from a profile
 - No flattery, no performed enthusiasm, no overselling
-- When drafting multiple emails in one batch, no two emails should follow the same structure or open their paragraphs the same way. The specific facts stay consistent across emails, but the framing and entry points must differ
+- When drafting multiple emails in one batch, no two emails should follow the same structure or open their paragraphs the same way. Specific facts stay consistent, but framing and entry points must differ.
 - ${compensationInstruction}
 - ${cvInstruction}
 
-Choose one sign-off that fits the tone of this specific email from this list: Best, Sincerely, Warm regards, Respectfully, Looking forward to hearing from you, All the best, Kind regards, Thank you. Follow it with the student's full name.
+The closing should be friendly and direct, not formal or deferential. Choose one sign-off that fits the tone from this list: Best, Sincerely, Warm regards, Respectfully, Looking forward to hearing from you, All the best, Kind regards, Thank you. Follow it with the student's full name.
 Do not generate a subject line. Only write the body starting with "Dear Professor [last name]," or "Dear Dr. [last name]," depending on their title.
 Output plain text only. Use line breaks between paragraphs. No markdown, no JSON.${sparseProfileNote}`;
 
