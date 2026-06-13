@@ -16,8 +16,9 @@ async function signInWithGoogle() {
   const codeChallenge = base64UrlEncode(new Uint8Array(digest));
 
   const redirectUri = `${window.location.origin}/auth/callback`;
-  document.cookie = `g_cv=${codeVerifier}; path=/; max-age=300; SameSite=Lax`;
-  document.cookie = `g_ruri=${encodeURIComponent(redirectUri)}; path=/; max-age=300; SameSite=Lax`;
+  const sec = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `g_cv=${codeVerifier}; path=/; max-age=300; SameSite=Lax${sec}`;
+  document.cookie = `g_ruri=${encodeURIComponent(redirectUri)}; path=/; max-age=300; SameSite=Lax${sec}`;
 
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
     client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
@@ -32,7 +33,8 @@ async function signInWithGoogle() {
 }
 
 async function handleGoogleLogin() {
-  document.cookie = `squibble_auth_next=${encodeURIComponent("/dashboard")}; path=/; max-age=300; SameSite=Lax`;
+  const sec = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `squibble_auth_next=${encodeURIComponent("/dashboard")}; path=/; max-age=300; SameSite=Lax${sec}`;
   await signInWithGoogle();
 }
 

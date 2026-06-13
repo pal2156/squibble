@@ -15,13 +15,19 @@ export async function GET(request: Request) {
   console.log("[stripe/redirect] hit — plan:", plan, "priceId:", priceId);
 
   if (!plan || !priceId) {
-    console.error(`[stripe/redirect] plan="${plan}" has no configured price ID — check STRIPE_PRICE_PRO / STRIPE_PRICE_MAX env vars`);
-    return NextResponse.redirect(`${origin}/dashboard`);
+    console.error(
+      `[stripe/redirect] plan="${plan}" has no configured price ID.`,
+      `STRIPE_PRICE_PRO="${process.env.STRIPE_PRICE_PRO}"`,
+      `NEXT_PUBLIC_STRIPE_PRICE_PRO="${process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO}"`,
+      `STRIPE_PRICE_MAX="${process.env.STRIPE_PRICE_MAX}"`,
+      `NEXT_PUBLIC_STRIPE_PRICE_MAX="${process.env.NEXT_PUBLIC_STRIPE_PRICE_MAX}"`,
+    );
+    return NextResponse.redirect(`${origin}/dashboard?checkout_error=config`);
   }
 
   if (!process.env.STRIPE_SECRET_KEY) {
     console.error("[stripe/redirect] STRIPE_SECRET_KEY is not set — cannot create Stripe session");
-    return NextResponse.redirect(`${origin}/dashboard`);
+    return NextResponse.redirect(`${origin}/dashboard?checkout_error=config`);
   }
 
   try {
@@ -58,12 +64,13 @@ export async function GET(request: Request) {
     const session = await stripe.checkout.sessions.create(sessionParams);
 
     if (!session.url) {
-      return NextResponse.redirect(`${origin}/dashboard`);
+      console.error("[stripe/redirect] Stripe returned a session with no URL");
+      return NextResponse.redirect(`${origin}/dashboard?checkout_error=session`);
     }
 
     return NextResponse.redirect(session.url);
   } catch (err) {
     console.error("[stripe/redirect] failed to create checkout session:", err);
-    return NextResponse.redirect(`${origin}/dashboard`);
+    return NextResponse.redirect(`${origin}/dashboard?checkout_error=payment`);
   }
 }

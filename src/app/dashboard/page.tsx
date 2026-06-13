@@ -85,10 +85,19 @@ function dateMatchesExact(dateSent: string, parsed: { month: number; day: number
 export default function DashboardPage() {
   const [sentEmails, setSentEmails] = useState<SentEmail[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkoutError, setCheckoutError] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const sessionId = new URLSearchParams(window.location.search).get("upgraded");
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("upgraded");
+    const checkoutErr = params.get("checkout_error");
+
+    if (checkoutErr) {
+      setCheckoutError(true);
+      router.replace("/dashboard", { scroll: false });
+    }
+
     if (!sessionId) return;
     router.replace("/dashboard", { scroll: false });
     fetch(`/api/stripe/verify-session?session_id=${sessionId}`).catch(() => {});
@@ -351,6 +360,17 @@ export default function DashboardPage() {
     {/* Left: scrollable content */}
     <div className="flex-1 min-w-0 overflow-y-auto">
     <div className="px-8 py-8 max-w-6xl mx-auto">
+      {checkoutError && (
+        <div
+          className="mb-4 flex items-center justify-between rounded-lg px-4 py-3 text-sm"
+          style={{ background: "rgba(220,60,60,0.08)", border: "1px solid rgba(220,60,60,0.2)", color: "#c0392b" }}
+        >
+          <span>Something went wrong with checkout. Please try again or contact support.</span>
+          <button onClick={() => setCheckoutError(false)} className="ml-4 font-semibold leading-none" style={{ color: "#c0392b" }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6 text-center">
         <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
