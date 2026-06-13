@@ -8,10 +8,12 @@ export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const googleError = searchParams.get("error");
+  const stateParam = searchParams.get("state");
 
   // Determine post-auth destination.
   // Priority 1: squibble_auth_next cookie set before the OAuth redirect.
-  // Priority 2: squibble_plan_intent cookie (legacy fallback).
+  // Priority 2: state URL param (plan encoded directly in OAuth state as fallback).
+  // Priority 3: squibble_plan_intent cookie (legacy fallback).
   // Default: /dashboard.
   const cookieStore = await cookies();
   const rawCookieNext = cookieStore.get("squibble_auth_next")?.value;
@@ -21,6 +23,8 @@ export async function GET(request: Request) {
   let next: string;
   if (cookieNext && cookieNext.startsWith("/") && !cookieNext.startsWith("//")) {
     next = cookieNext;
+  } else if (stateParam === "pro" || stateParam === "max") {
+    next = `/api/stripe/redirect?plan=${stateParam}`;
   } else if (cookiePlan === "pro" || cookiePlan === "max") {
     next = `/api/stripe/redirect?plan=${cookiePlan}`;
   } else {

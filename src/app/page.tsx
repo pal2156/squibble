@@ -43,7 +43,32 @@ async function handleGoogleLogin() {
 
 async function handleGoogleLoginForPlan(plan: "pro" | "max") {
   document.cookie = `squibble_auth_next=${encodeURIComponent(`/api/stripe/redirect?plan=${plan}`)}; path=/; max-age=300; SameSite=Lax`;
-  await signInWithGoogle();
+  await signInWithGoogleForPlan(plan);
+}
+
+async function signInWithGoogleForPlan(plan: "pro" | "max") {
+  const raw = new Uint8Array(64);
+  crypto.getRandomValues(raw);
+  const codeVerifier = base64UrlEncode(raw);
+
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+  const codeChallenge = base64UrlEncode(new Uint8Array(digest));
+
+  const redirectUri = `${window.location.origin}/auth/callback`;
+  document.cookie = `g_cv=${codeVerifier}; path=/; max-age=300; SameSite=Lax`;
+  document.cookie = `g_ruri=${encodeURIComponent(redirectUri)}; path=/; max-age=300; SameSite=Lax`;
+
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+    client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: "openid email profile https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly",
+    access_type: "offline",
+    prompt: "consent",
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+    state: plan,
+  })}`;
 }
 
 // ─── Brand mark ────────────────────────────────────────────────

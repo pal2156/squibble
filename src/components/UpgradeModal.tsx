@@ -36,31 +36,10 @@ const PLANS = [
 
 export default function UpgradeModal({ onClose }: UpgradeModalProps) {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
-  async function handleCheckout(planKey: string) {
+  function handleCheckout(planKey: string) {
     setLoadingPlan(planKey);
-    setCheckoutError(null);
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: planKey }),
-      });
-      if (!res.ok) {
-        throw new Error(`Checkout failed (${res.status})`);
-      }
-      const data = await res.json();
-      if (data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error("No checkout URL returned");
-      }
-    } catch (err) {
-      console.error("[UpgradeModal] checkout error:", err);
-      setLoadingPlan(null);
-      setCheckoutError("Something went wrong. Please try again.");
-    }
+    window.location.href = `/api/stripe/redirect?plan=${planKey}`;
   }
 
   // Lock body scroll while open
@@ -124,13 +103,6 @@ export default function UpgradeModal({ onClose }: UpgradeModalProps) {
             One-time purchase. Credits never expire.
           </p>
         </div>
-
-        {/* Error */}
-        {checkoutError && (
-          <p className="text-center text-sm mb-4" style={{ color: "#e05252" }}>
-            {checkoutError}
-          </p>
-        )}
 
         {/* Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
