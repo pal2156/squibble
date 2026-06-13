@@ -44,7 +44,7 @@ async function robustJson<T>(rawText: string, fallbackInstruction: string): Prom
   }
 }
 
-type ProfessorStub = { name: string; profile_url: string | null };
+type ProfessorStub = { name: string; profile_url: string | null; email: string | null };
 
 function normalizeName(name: string): string {
   return name
@@ -60,6 +60,12 @@ function shuffleArray<T>(arr: T[]): T[] {
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
+}
+
+function isValidEmail(s: string | null | undefined): string | null {
+  if (!s || typeof s !== "string") return null;
+  const trimmed = s.trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(trimmed) ? trimmed : null;
 }
 
 type EnrichedProfessor = {
@@ -96,7 +102,7 @@ Steps:
 1. Search for the faculty directory at ${university} most relevant to "${researchInterest}".
    - If the exact field does not exist, expand outward to the closest related department (e.g. "colliding black holes" becomes astrophysics, then physics; "Ottoman economic history" becomes Middle Eastern studies or history).
    - You must always find a faculty page. If nothing specific exists, find the closest general department page.
-2. Read the faculty page once to get professor names and profile URLs.
+2. Read the faculty page once to get professor names, profile URLs, and email addresses where listed directly on the page.
 3. Return ALL professors you find on the page (up to 40).
 
 Do NOT visit any individual professor pages.
@@ -105,7 +111,7 @@ Return ONLY JSON:
 {
   "department": "Department Name",
   "professors": [
-    {"name": "Full Name", "profile_url": "https://... or null"}
+    {"name": "Full Name", "profile_url": "https://... or null", "email": "address@university.edu or null"}
   ]
 }`,
       },
@@ -115,17 +121,17 @@ Return ONLY JSON:
   const raw = extractText(res.content);
   const parsed = await robustJson<{ department: string; professors: ProfessorStub[] }>(
     raw,
-    'Extract the department name and professor list. Return JSON: {"department": "...", "professors": [{"name": "...", "profile_url": "..."}]}'
+    'Extract the department name and professor list. Return JSON: {"department": "...", "professors": [{"name": "...", "profile_url": "...", "email": "..."}]}'
   );
 
-  // Deduplicate stubs by normalized name.
+  // Deduplicate stubs by normalized name, and validate any email found on the directory page.
   const seen = new Set<string>();
   const deduped = (parsed.professors ?? []).filter(stub => {
     const key = (stub.name ?? "").trim().toLowerCase();
     if (!key || seen.has(key)) return false;
     seen.add(key);
     return true;
-  });
+  }).map(stub => ({ ...stub, email: isValidEmail(stub.email) }));
 
   // Shuffle server-side so each run draws a different random sample.
   return {
@@ -134,36 +140,109 @@ Return ONLY JSON:
   };
 }
 
+// Fallback page fetch: called only when page 1 came up short. Searches one step
+// broader than the departments already tried, using the same structure as
+// findFacultyStubs but driven by a pre-supplied exclusion list.
+async function findNextFacultyPage(
+  university: string,
+  researchInterest: string,
+  alreadySearched: string[]
+): Promise<{ stubs: ProfessorStub[]; department: string }> {
+  const excludeList = alreadySearched.join(", ");
+
+  const res = await anthropic.messages.create({
+    model: HAIKU,
+    max_tokens: 1200,
+    tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
+    system:
+      "You find faculty directory pages and return professor name lists as JSON. Return ONLY valid JSON. Use at most 2 web searches total.",
+    messages: [
+      {
+        role: "user",
+        content: `Find more professors at ${university} relevant to "${researchInterest}".
+
+We have already searched these faculty pages: ${excludeList}.
+Find the NEXT most relevant faculty directory by going one level broader or to an adjacent department.
+Do NOT return professors from any of the already-searched departments.
+
+Strategy:
+- If we searched a specific subfield, try the parent department page next.
+- If we already searched the parent department, try the closest adjacent or interdisciplinary department.
+- Always prefer the closest match to "${researchInterest}" not yet searched.
+
+Steps:
+1. Find the best faculty directory page we have not yet searched.
+2. Read that page to get professor names, profile URLs, and email addresses where listed directly on the page.
+3. Return ALL professors found on that page (up to 40).
+
+Do NOT visit any individual professor pages.
+
+Return ONLY JSON:
+{
+  "department": "Department Name",
+  "professors": [
+    {"name": "Full Name", "profile_url": "https://... or null", "email": "address@university.edu or null"}
+  ]
+}`,
+      },
+    ],
+  });
+
+  const raw = extractText(res.content);
+  const parsed = await robustJson<{ department: string; professors: ProfessorStub[] }>(
+    raw,
+    'Extract the department name and professor list. Return JSON: {"department": "...", "professors": [{"name": "...", "profile_url": "...", "email": "..."}]}'
+  );
+
+  const seen = new Set<string>();
+  const deduped = (parsed.professors ?? []).filter(stub => {
+    const key = (stub.name ?? "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map(stub => ({ ...stub, email: isValidEmail(stub.email) }));
+
+  return {
+    stubs: shuffleArray(deduped),
+    department: parsed.department ?? researchInterest,
+  };
+}
+
 // Phase 2: One Haiku call per professor, each starting with a fresh small context.
-// Finds their lab/research page and extracts profile info. Returns null if the professor
-// does not have enough substantive research content to include.
+// Reads the department bio URL first. If the extracted description is under 120 chars,
+// fires one web search to find a richer page. Google Scholar is never a destination.
 async function enrichOneProfessor(
   stub: ProfessorStub,
   university: string,
   department: string
 ): Promise<Omit<EnrichedProfessor, "university"> | null> {
   try {
+    const bioStep = stub.profile_url
+      ? `Step 1: Read this department bio page: ${stub.profile_url}
+Step 2: Extract the research description from what you found.
+  - If you can write at least 120 characters of substantive research content from this page (specific projects, methods, or topics), stop here and return your result.
+  - If the page contains only a generic one-liner or no meaningful research detail, do ONE web search using the exact query "${stub.name} ${university} research", then visit the most relevant result to find richer content. Never visit Google Scholar.`
+      : `Step 1: Search: "${stub.name} ${university} research" and visit the most relevant result. Never visit Google Scholar.`;
+
     const res = await anthropic.messages.create({
       model: HAIKU,
       max_tokens: 1000,
       tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
       system:
-        "You extract professor research profiles from web pages. Return ONLY valid JSON. Use at most 1 web search.",
+        "You extract professor research profiles from web pages. Return ONLY valid JSON. Use at most 1 web search, and only when the initial page lacks sufficient research detail.",
       messages: [
         {
           role: "user",
           content: `Find the research profile for Professor ${stub.name} at ${university}.
-${stub.profile_url ? `Start with: ${stub.profile_url}` : `Search: "${stub.name} ${university} research"`}
 
-Look for their lab page, personal research page, or Google Scholar profile.
-Preference order: lab page > Google Scholar > department bio.
+${bioStep}
 
 Extract:
-- email (string or null)
+- email: ${stub.email ? `"${stub.email}" (already found on the directory page — use this value, do not search for another)` : "(string or null — check the department bio or lab page for contact info)"}
 - title (string or null, e.g. "Assistant Professor", "Associate Professor", "Professor")
 - description (2-3 sentences of CURRENT research: specific projects, methods, topics. A job title or department name does not count. If you cannot write 2 substantive sentences, return null for the whole record.)
 - research_areas (array of up to 5 keyword strings)
-- source_type (one of: "lab_page", "google_scholar", "profile_page_only")
+- source_type (one of: "lab_page", "department_bio", "profile_page_only")
 - profile_url (the URL where you found the best research information, or null)
 
 Return ONLY JSON:
@@ -194,7 +273,7 @@ If you cannot find substantive research information, return: null`,
 
     return {
       name: stub.name,
-      email: parsed.email ?? null,
+      email: stub.email ?? isValidEmail(parsed.email),
       title: parsed.title ?? null,
       department,
       profile_url: parsed.profile_url ?? stub.profile_url ?? null,
@@ -260,6 +339,8 @@ export async function POST(request: Request) {
         // Enrich a small buffer of stubs in Phase 2; two rounds so most runs never
         // touch the reserve stubs, avoiding wasted web searches.
         const fetchCount = Math.min(targetCount + 3, 18);
+        // Tracks every stub seen across all faculty pages this run for cross-page dedup.
+        const seenInThisRun = new Set<string>();
 
         controller.enqueue(sse({ type: "progress", message: "Finding professors..." }));
 
@@ -283,6 +364,10 @@ export async function POST(request: Request) {
             return new Set((pastProfs ?? []).map((p) => normalizeName(p.name)));
           })(),
         ]);
+
+        // Register all page-1 stubs so fallback pages can skip professors already seen.
+        stubs.forEach(s => seenInThisRun.add(normalizeName(s.name)));
+        const triedDepartments = [department];
 
         if (stubs.length === 0) {
           controller.enqueue(
@@ -334,6 +419,45 @@ export async function POST(request: Request) {
             (p): p is Omit<EnrichedProfessor, "university"> => p !== null
           );
           allValid = [...validFirst, ...validSecond];
+        }
+
+        // Phase 2b: if still short after exhausting page 1, fetch additional faculty pages
+        // one at a time, going specific to broad, until the target is reached or 3 total
+        // pages have been searched. The common case (page 1 has enough) never enters this loop.
+        while (allValid.length < targetCount && triedDepartments.length < 3) {
+          controller.enqueue(sse({
+            type: "progress",
+            message: `Found ${allValid.length} professor${allValid.length === 1 ? "" : "s"}. Searching a broader faculty directory...`,
+          }));
+
+          const { stubs: nextStubs, department: nextDept } = await findNextFacultyPage(
+            campaign.university,
+            campaign.research_interest,
+            triedDepartments
+          );
+
+          triedDepartments.push(nextDept);
+
+          const freshNextStubs = nextStubs.filter(stub => {
+            const key = normalizeName(stub.name);
+            return !seenNamesSet.has(key) && !seenInThisRun.has(key);
+          });
+          nextStubs.forEach(s => seenInThisRun.add(normalizeName(s.name)));
+
+          if (freshNextStubs.length === 0) continue;
+
+          const stillNeeded = targetCount - allValid.length;
+          const toEnrich = freshNextStubs.slice(0, stillNeeded + 2);
+
+          controller.enqueue(sse({ type: "progress", message: "Researching additional professors..." }));
+
+          const nextResults = await Promise.all(
+            toEnrich.map(stub => enrichOneProfessor(stub, campaign.university, nextDept))
+          );
+          const nextValid = nextResults.filter(
+            (p): p is Omit<EnrichedProfessor, "university"> => p !== null
+          );
+          allValid = [...allValid, ...nextValid];
         }
 
         const enrichedProfessors: EnrichedProfessor[] = allValid
@@ -484,7 +608,7 @@ Return ONLY JSON: {"title": "..."}`,
 
         await supabase.from("campaigns").update({ title, status: "active" }).eq("id", campaignId);
 
-        await supabase.rpc("decrement_searches_by", { uid: user.id, amount: requestedCount });
+        await supabase.rpc("decrement_searches_by", { uid: user.id, amount: enrichedProfessors.length });
 
         controller.enqueue(sse({ type: "done", title }));
       } catch (err) {
