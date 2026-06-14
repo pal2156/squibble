@@ -52,7 +52,7 @@ export default function PrivacyPage() {
             <ul style={listStyle}>
               <li style={liStyle}>
                 <strong style={strongStyle}>Account information.</strong>{" "}
-                Your name and email address, provided when you sign in with Google.
+                Your name, email address, and profile photo, provided when you sign in with Google.
               </li>
               <li style={liStyle}>
                 <strong style={strongStyle}>Profile information.</strong>{" "}
@@ -93,7 +93,12 @@ export default function PrivacyPage() {
               </li>
               <li style={liStyle}>
                 <strong style={strongStyle}>Plan and credit data.</strong>{" "}
-                Your current plan tier and your remaining search and send credits.
+                Your current plan tier, your remaining search and send credits, and your Stripe customer ID.
+              </li>
+              <li style={liStyle}>
+                <strong style={strongStyle}>Purchase history.</strong>{" "}
+                A record of each completed purchase, including the Stripe session ID, plan selected, credits
+                granted, and purchase timestamp. This is used for payment idempotency.
               </li>
             </ul>
           </div>
@@ -148,11 +153,13 @@ export default function PrivacyPage() {
             </p>
             <p style={{ ...bodyStyle, marginTop: "16px" }}>
               <strong style={strongStyle}><code style={codeStyle}>gmail.readonly</code></strong>{" "}
-              is used exclusively to monitor your inbox for activity in Squibble email threads. When
+              is used exclusively to monitor your inbox for activity related to Squibble campaigns. When
               Google notifies us of new inbox messages via Pub/Sub, we fetch the sender and subject of
-              each message to screen for bounce notifications, and fetch the full message body only for
-              messages that belong to a thread Squibble originally created. We never read, index, store,
-              or process any other emails in your Gmail account.
+              each message to screen for relevant activity, and fetch the full message body in three cases:
+              (1) messages in a thread Squibble originally created, (2) bounce notification messages whose
+              sender or subject indicates a mail delivery failure, and (3) messages from senders whose
+              address matches a professor Squibble previously emailed, to capture replies sent in a fresh
+              thread. We never read, index, store, or process any other emails in your Gmail account.
             </p>
             <p style={{ ...bodyStyle, marginTop: "16px" }}>
               Your Gmail access token and refresh token are stored securely in our database. They are
