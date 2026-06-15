@@ -635,7 +635,7 @@ export default function DashboardPage() {
                     className="px-5 py-10 text-center text-xs"
                     style={{ color: "var(--ink-muted)" }}
                   >
-                    No emails match your filters.
+                    No results match your filters.
                   </td>
                 </tr>
               ) : (

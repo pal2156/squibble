@@ -42,7 +42,18 @@ export default function CampaignPage() {
         .then((d: { searches_remaining: number }) => {
           const remaining = d.searches_remaining ?? 0;
           setScoutingRemaining(remaining);
-          setSliderMax(Math.min(20, remaining));
+          const max = Math.min(20, remaining);
+          setSliderMax(max);
+
+          let defaultCount: number;
+          if (remaining === 0) {
+            defaultCount = 0;
+          } else if (remaining <= 20) {
+            defaultCount = Math.ceil(remaining / 2);
+          } else {
+            defaultCount = 10;
+          }
+          setDraft({ contactCount: defaultCount, rawCount: String(defaultCount) });
         })
         .catch(() => {});
     }
@@ -58,6 +69,7 @@ export default function CampaignPage() {
   }, []);
 
   const noScoutingQuota = scoutingRemaining !== null && scoutingRemaining === 0;
+  const sliderDisabled = scoutingRemaining !== null && scoutingRemaining <= 1;
   const ready = university.trim() && research.trim() && !noScoutingQuota;
 
   if (loading) {
@@ -252,7 +264,7 @@ export default function CampaignPage() {
         </div>
 
         {/* Researcher count */}
-        <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+        <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)", opacity: scoutingRemaining === null ? 0 : 1 }}>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>
               How many researchers would you like us to find?
@@ -276,7 +288,7 @@ export default function CampaignPage() {
             min={1}
             max={sliderMax > 0 ? sliderMax : 1}
             value={contactCount}
-            disabled={noScoutingQuota}
+            disabled={sliderDisabled}
             onChange={(e) => {
               const n = Number(e.target.value);
               setDraft({ contactCount: n, rawCount: String(n) });
@@ -284,8 +296,8 @@ export default function CampaignPage() {
             className="w-full"
             style={{
               accentColor: "var(--accent)",
-              cursor: noScoutingQuota ? "not-allowed" : "pointer",
-              opacity: noScoutingQuota ? 0.4 : 1,
+              cursor: sliderDisabled ? "not-allowed" : "pointer",
+              opacity: sliderDisabled ? 0.4 : 1,
             }}
           />
           <div className="flex items-center justify-between mt-3">

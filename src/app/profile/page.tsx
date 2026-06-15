@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Upload, X } from "lucide-react";
 
 type Path = "A" | "B";
@@ -309,7 +308,6 @@ function ProfileFields({
 // ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
-  const router = useRouter();
   const [form, setForm] = useState<FormState>(defaultForm);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isEditView, setIsEditView] = useState(false);
@@ -506,11 +504,8 @@ export default function ProfilePage() {
         extractionPromise.current = null;
       }
 
-      if (isEditView) {
-        setSaved(true);
-      } else {
-        router.push("/profile/complete");
-      }
+      setSaved(true);
+      setIsEditView(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Could not save profile.");
     } finally {
