@@ -2,18 +2,21 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { anthropic, SONNET } from "@/lib/anthropic";
 
-const SUBJECT_LINES = [
-  "Undergraduate Research Inquiry",
-  "Research Position Inquiry",
-  "Interest in Your Work",
-  "Seeking Research Experience",
-  "Research Collaboration Inquiry",
-  "Looking to Contribute",
-  "Research Participation Interest",
-  "Research Contribution Inquiry",
-  "Research Engagement Inquiry",
-  "Interest in Your Research",
-];
+const SIGN_OFFS = ["Best", "Sincerely", "Warm regards", "Best regards", "Thank you"];
+
+function splitName(fullName: string): { first: string; last: string } {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first: "", last: "" };
+  if (parts.length === 1) return { first: parts[0], last: parts[0] };
+  return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
+}
+
+function parseAvailability(raw: string | null): { start: string; end: string } {
+  if (!raw) return { start: "", end: "" };
+  const match = raw.match(/^(.*?)\s+(?:to|through|until|-|–|—)\s+(.*)$/i);
+  if (match) return { start: match[1].trim(), end: match[2].trim() };
+  return { start: raw.trim(), end: "" };
+}
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -31,11 +34,36 @@ export async function POST(request: Request) {
 
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
 
-  const { data: professors } = await supabase
-    .from("professors")
-    .select("*")
+  const { data: selectedCampaignProfessors } = await supabase
+    .from("campaign_professors")
+    .select("*, professors(*)")
     .eq("campaign_id", campaignId)
-    .eq("selected", true);
+    .eq("selected_by_student", true);
+
+  const selectedFacultyPageIds = Array.from(
+    new Set((selectedCampaignProfessors ?? []).flatMap((cp) => cp.professors.faculty_page_ids ?? []))
+  );
+  const { data: selectedFacultyPages } = selectedFacultyPageIds.length > 0
+    ? await supabase.from("faculty_pages").select("id, university, department_name").in("id", selectedFacultyPageIds)
+    : { data: [] as Array<{ id: string; university: string; department_name: string | null }> };
+  const facultyPageById = new Map((selectedFacultyPages ?? []).map((p) => [p.id, p]));
+
+  const professors = (selectedCampaignProfessors ?? []).map((cp) => {
+    const prof = cp.professors;
+    const page = facultyPageById.get(prof.faculty_page_ids[0]);
+    return {
+      id: prof.id,
+      name: prof.name,
+      role_tag: prof.role_tag,
+      department: page?.department_name ?? null,
+      university: page?.university ?? campaign.university,
+      title: prof.title,
+      description: prof.research_description,
+      email: prof.email,
+      connection_summary: cp.connection_summary,
+      recent_papers: (cp.recent_papers ?? []).slice(0, 3),
+    };
+  });
 
   if (!professors || professors.length === 0) {
     return NextResponse.json({ error: "No professors selected" }, { status: 400 });
@@ -95,99 +123,214 @@ export async function POST(request: Request) {
     });
   }
 
-  const studentContext = profile
-    ? [
-        `Full name: ${profile.name ?? "(not provided)"}`,
-        `Year: ${profile.year ?? "(not provided)"}`,
-        `School: ${profile.school ?? "(not provided)"}`,
-        `Major: ${profile.major ?? "(not provided)"}`,
-        profile.coursework ? `Relevant coursework: ${profile.coursework}` : null,
-        profile.experience ? `Research and work experience: ${profile.experience}` : null,
-        profile.skills ? `Skills: ${profile.skills}` : null,
-        profile.extracurriculars ? `Extracurriculars: ${profile.extracurriculars}` : null,
-        profile.anything_else ? `Additional context: ${profile.anything_else.slice(0, 800)}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n")
-    : "(no profile data provided)";
-
-  const campaignContext = [
-    campaign.research_interest ? `Research interest: ${campaign.research_interest}` : null,
-    campaign.subfield ? `Subfield: ${campaign.subfield}` : null,
-    campaign.university ? `Target university: ${campaign.university}` : null,
-    campaign.availability ? `Availability: ${campaign.availability}` : null,
+  const studentExperiences = [
+    profile?.coursework ? `Coursework: ${profile.coursework}` : null,
+    profile?.experience ? `Experience: ${profile.experience}` : null,
+    profile?.skills ? `Skills: ${profile.skills}` : null,
+    profile?.extracurriculars ? `Extracurriculars: ${profile.extracurriculars}` : null,
+    profile?.anything_else ? `Additional: ${profile.anything_else.slice(0, 800)}` : null,
   ]
     .filter(Boolean)
-    .join("\n");
+    .join("\n") || "(none provided)";
 
-  // Path A: student uploaded a CV; Path B: manual form entry
-  const isPathA = !!(profile?.cv_text && profile?.cv_filename);
-
-  // Detect a sparse profile so Claude knows not to pad paragraph 3 with invented details.
-  const substantiveFields = [
-    profile?.coursework,
-    profile?.experience,
-    profile?.skills,
-    profile?.extracurriculars,
-  ].filter(Boolean);
-  const sparseProfileNote = substantiveFields.length < 2
-    ? "\nNote: The student's profile is sparse. Paragraph 3 will be brief. Do not invent credentials or experience. Keep it honest and direct."
-    : "";
-
-  const subject = SUBJECT_LINES[Math.floor(Math.random() * SUBJECT_LINES.length)];
+  const hasCv = !!(profile?.cv_text && profile?.cv_filename);
+  const { start: availabilityStart, end: availabilityEnd } = parseAvailability(campaign.availability);
 
   // Hoist everything that is constant across professors so each API call sends the
   // same string objects — required for prompt cache hits.
-  const compensationInstruction = campaign.position_type === "paid"
-    ? "Work in naturally that the student is looking for a paid research position. Do not make it sound like a demand or a condition."
-    : "Do not mention compensation, pay, or whether the position is paid or unpaid at all.";
+  const studentFields = {
+    student_name: profile?.name ?? null,
+    student_year: profile?.year ?? null,
+    student_university: profile?.school ?? null,
+    student_major: profile?.major ?? null,
+    student_experiences: studentExperiences,
+    has_cv: hasCv,
+    availability_start: availabilityStart,
+    availability_end: availabilityEnd,
+  };
 
-  const cvInstruction = isPathA
-    ? "Near the end of the email, include a brief natural mention that the student has attached their CV for reference."
-    : "Do not mention a CV or any attachment.";
+  const systemPrompt = `You are writing a cold outreach email from a student seeking a research position with a professor or researcher. Your job is to write an email that feels warm, human, and concise. It must not sound AI-generated, corporate, or like a template. Every email must feel specific to this professor and this student.
 
-  const systemPrompt = `You are writing a cold email from a student to a professor asking about a research opportunity. The email must be under 200 words and consist of exactly four short paragraphs.
+**INPUTS YOU WILL RECEIVE**
+- student_name: first and last name
+- student_year: Freshman, Sophomore, Junior, Senior, High School Student, Graduate Student, or unknown
+- student_university: university or school name
+- student_major: field of study
+- student_experiences: relevant experiences, projects, coursework, skills
+- professor_last_name: last name
+- professor_first_name: first name
+- professor_role_tag: one of: professor, assistant_professor, associate_professor, chair, emeritus, postdoc, research_scientist, grad_student, visiting_scholar, lecturer, other
+- research_description: verbatim text from the professor's faculty page
+- recent_papers: array of up to 3 objects with title and year, or empty
+- connection_summary: one sentence describing a specific link between the student's background and the professor's research, or null
+- has_cv: true or false
+- availability_start: e.g. "mid-May"
+- availability_end: e.g. "August"
 
-Paragraph structure:
+**OUTPUT FORMAT**
 
-1. Who the student is and what they are asking for. Two sentences max. State name, year, school, and the ask directly.
-2. The connection to the professor's research. This paragraph must open in a natural, conversational way that conveys genuine curiosity and discovery. It should feel like the student stumbled onto something that caught their interest, not like they are summarizing or analyzing the professor's work from a distance. Do not open with a thesis-style statement. The exact phrasing should vary across emails, but always feel like a real person talking about something they found genuinely compelling. Sometimes lead with something the student noticed or came across, sometimes with a question the professor's work opens up, sometimes with what surprised them about it. The content must stay specific and grounded in the professor's actual work. A specific paper title or research detail is fine only when it genuinely strengthens the paragraph. Never required. Never invent details you are not certain about. Two to three sentences.
-3. The student's background in relation to this professor. Pick at least two relevant pieces of the student's background and briefly connect each to what this professor's lab does. If the professor runs a computational lab, connect the student's programming experience to that. If the work is more theoretical, lean on the mathematical background. If the work is experimental, frame the research experience accordingly. Do not list credentials in isolation. Every piece of background mentioned must tie back to the professor. Two to three sentences.
-4. Availability and the ask. Friendly and direct, not formal or deferential. Two to three sentences.
+Return only a JSON object in this exact format, with no surrounding text:
+\`\`\`json
+{
+  "subject": "...",
+  "body": "..."
+}
+\`\`\`
 
-Rules:
+**SUBJECT LINE**
 
-- Total length: under 200 words
-- Every paragraph: 2-3 sentences max, no exceptions
-- Tone: warm, genuine, and human throughout. The student should sound like a real person having a conversation, not like they are writing a cover letter or formal application. Confident but not arrogant.
-- Vocabulary: use plain language. Avoid academic jargon, essay-style phrasing, and words that feel unnecessarily elevated. Intelligent but not overwritten.
-- Conciseness: trim anything redundant. Say it once and move on.
-- Never use em dashes anywhere in the email
-- Never use phrases like "your work caught my attention," "your research stood out," "genuinely caught my attention," "most research I have encountered," "impressed by your work," or any variation that frames the professor's research as exceptional among everything the student has read
-- Never write "thank you for your time" or any close variant before the sign-off
-- Never use "would welcome" in any form (e.g., "I would welcome the chance," "I would welcome any involvement"). The closing sentence expressing interest in next steps must be direct and natural.
-- Never use phrases like "sits at the intersection of," "rigorous," "robust," "synergy," or anything that sounds like a LinkedIn bio or performance review
-- Do not start consecutive sentences with "I"
-- The email must sound like it was written by a real undergraduate, not assembled from a profile
-- No flattery, no performed enthusiasm, no overselling
-- When drafting multiple emails in one batch, no two emails should follow the same structure or open their paragraphs the same way. Specific facts stay consistent, but framing and entry points must differ.
-- ${compensationInstruction}
-- ${cvInstruction}
+Step 1: Determine status. Use student_year directly: Freshman, Sophomore, Junior, Senior, High School Student, Graduate Student. If unknown or ambiguous, omit status entirely.
 
-The closing should be friendly and direct, not formal or deferential. Choose one sign-off that fits the tone from this list: Best, Sincerely, Warm regards, Respectfully, Looking forward to hearing from you, All the best, Kind regards, Thank you. Follow it with the student's full name.
-Do not generate a subject line. Only write the body starting with "Dear Professor [last name]," or "Dear Dr. [last name]," depending on their title.
-Output plain text only. Use line breaks between paragraphs. No markdown, no JSON.${sparseProfileNote}`;
+Step 2: Determine if professor runs a lab. Read research_description. A lab is explicitly present only if the text directly mentions a lab, lab members, lab equipment, or lab-based work. If ambiguous, treat as no lab.
+
+Step 3: Pick one variant from the correct pool.
+
+Pool A (explicit lab mention):
+- [Status] Seeking Research Opportunity
+- [Status] Looking for a Research Position
+- [Status] Interested in Joining Your Lab
+- [Status] Looking to Contribute to Your Lab
+
+Pool B (no explicit lab mention):
+- [Status] Seeking Research Opportunity
+- [Status] Looking for a Research Position
+
+If status is unknown, drop it: Seeking Research Opportunity, Looking for a Research Position, etc.
+
+Vary the pick across emails. Do not always pick the same variant.
+
+**GREETING**
+
+Use professor_role_tag to determine the greeting:
+- professor, assistant_professor, associate_professor, chair, emeritus: Dear Professor [Last Name],
+- postdoc, research_scientist, doctorate: Hi Dr. [Last Name],
+- grad_student: Hi [First Name],
+- visiting_scholar, lecturer, other: Hi Dr. [Last Name],
+
+**EMAIL BODY**
+
+The email is exactly 4 paragraphs. Total word count: 150 to 180 words. Every sentence must earn its place.
+
+**PARAGRAPH 1: The Hook**
+
+1-2 sentences. Open directly on the professor's research. No pleasantries. No "I hope you're doing well." Never start with "I" as the first word. Never use flattery. Never summarize the paper back at them.
+
+If recent_papers is non-empty: Pick the paper that best matches the professor's research description. If both paper and research area are present, pick the slice of the research description that most closely maps to the paper title. Do not use the full research description. One concise phrase that bridges the paper to their broader work.
+
+Approved structures, vary across emails:
+- I recently came across your work on [research area] and after reading your [year] paper on [paper title], I wanted to reach out.
+- After reading your [year] paper on [paper title], I developed a strong interest in [research area] and thought I'd get in touch.
+- I came across your [year] paper on [paper title] while looking into [research area], and I thought I'd reach out.
+
+If recent_papers is empty AND connection_summary is non-null:
+
+Approved structures:
+- From [specific experience from connection_summary], I've developed a strong interest in [field], and after coming across your work on [research area], I thought I'd reach out.
+- After [specific experience from connection_summary] sparked my interest in [field], I came across your work on [research area] and wanted to get in touch.
+
+If recent_papers is empty AND connection_summary is null:
+- I recently came across your work on [specific element from research description] and thought I'd reach out.
+- I came across your work on [research area] recently and wanted to get in touch.
+
+Rules for [research area]: Always specific to this professor's actual work. Never just the field name. Concise. Directly tied to the paper title when a paper exists.
+
+Banned in P1: "caught my attention," "I was fascinated by," "your groundbreaking work," "your incredible work," "I am writing to," "I came across" when used as flattery, any sentence that could apply to any professor.
+
+**PARAGRAPH 2: Identity + Credibility**
+
+2-3 short sentences.
+
+Sentence 1: Identity. State name, year, university, major. Vary the structure:
+- I'm [first name], a [year] [major] student at [university].
+- My name is [first name] and I'm a [year] student at [university] studying [major].
+- I'm [first name], a [year] student at [university] studying [major].
+
+Sentences 2-3: Credibility. Pick the 1-2 experiences from student_experiences that most closely map to the professor's research. Do not list everything. Do not use superlatives. Do not brag. Just state what they have done concisely and let it speak for itself. If connection_summary is non-null, the experiences chosen must reinforce it. Keep both sentences short. Together they should not exceed 50 words.
+
+Banned in P2: "extensive experience," "I am highly motivated," "I am passionate about," "I've always been interested in," any superlative, resume dumping.
+
+**PARAGRAPH 3: The Offer + Timeline**
+
+1-2 sentences. This is where the student makes their ask. Frame it as an offer, not a demand. Sound flexible and willing, not desperate.
+
+If lab is explicitly mentioned in research_description:
+- If your group has any space, I'd love to help, even with smaller tasks like [task 1] or [task 2], and I'm fully committed to learning what's needed. I'd be available from [availability_start] through [availability_end].
+- I would love to assist you in any way, whether through [task 1] or [task 2]. I'd be available from [availability_start] through [availability_end] and very willing to learn what's needed to contribute effectively.
+
+If no explicit lab mention:
+- I'd be happy to contribute in any way, whether that's [task 1] or [task 2]. I'm available from [availability_start] through [availability_end].
+- I would love to assist you in any way, whether through [task 1] or [task 2], and I'd be available from [availability_start] through [availability_end].
+
+Rules for tasks: Draw [task 1] and [task 2] from the professor's actual research description and the student's skills. Never use generic placeholder tasks. Never use the exact same tasks for every professor.
+
+Approved openers: "I'd love to," "I would love to," "I'd be happy to"
+
+Banned openers: "I'd be glad to," "I'm very open to," "I'd be delighted to," "whatever capacity"
+
+Always include the timeline in every P3.
+
+**PARAGRAPH 4: The Close**
+
+1-2 sentences. Soft and open. Never pushy. Never demand a response.
+
+If has_cv is true:
+- I've attached my CV for reference and would love the chance to discuss your research and whether there might be any ways I could contribute.
+- I've attached my resume for more details and would love to chat about your research and any ways I could help.
+- I have attached my CV for reference. I'd love to discuss your research and explore whether there might be any ways I could contribute.
+
+If has_cv is false:
+- I would love the chance to discuss your research and explore whether there might be any ways I could contribute.
+- I'd love to chat with you about your research and whether there might be any ways I could help out.
+- I would love to meet with you to talk more about your research and explore any ways I could contribute.
+
+Banned in P4: "at your earliest convenience," "I look forward to hearing from you," "please do not hesitate," "I would greatly appreciate the opportunity," "thank you for your consideration."
+
+**SIGN-OFF**
+
+Do not generate the sign-off. It will be appended in code. Leave it out of the body entirely.
+
+**GLOBAL RULES**
+
+Banned phrases everywhere:
+- "passionate about," "delve into," "cutting-edge," "would welcome," "I am writing to"
+- "I came across" used as flattery
+- "groundbreaking," "incredible work," "pioneering," "world-class," "renowned"
+- "I believe I would be," "I am confident that," "I am highly motivated"
+- "hoping to hear from you," "at your earliest convenience," "please do not hesitate"
+- Em dashes anywhere in the email
+
+Tone rules:
+- Human, warm, direct. Not corporate. Not formal cover letter language.
+- Contractions are fine and preferred.
+- Short sentences over long ones.
+- Never start the email body with "I" as the first word.
+- Never open with a pleasantry.
+- No sentence should be able to apply to any professor. Every sentence must be specific to this professor or this student.
+
+Structure rules:
+- Exactly 4 paragraphs.
+- 150 to 180 words total. Count carefully. If over 180, cut. If under 150, expand.
+- Vary sentence structures and opening phrases across emails so no two emails read the same.
+- One paper referenced maximum when papers exist. Never zero when papers exist. Never two.`;
 
   type Prof = (typeof professorsNeedingDrafts)[number];
   const draftForProf = async (prof: Prof) => {
     const profUniversity = prof.university ?? campaign.university ?? "";
-    const profResearch = prof.description ?? "(no research description found)";
-    const profTitle = prof.title ?? "";
+    const { first: professorFirstName, last: professorLastName } = splitName(prof.name);
+
+    const professorFields = {
+      professor_last_name: professorLastName,
+      professor_first_name: professorFirstName,
+      professor_role_tag: prof.role_tag,
+      research_description: prof.description ?? "(no research description found)",
+      recent_papers: prof.recent_papers ?? [],
+      connection_summary: prof.connection_summary ?? null,
+    };
 
     try {
       const response = await anthropic.messages.create({
         model: SONNET,
-        max_tokens: 600,
+        max_tokens: 700,
         system: [
           {
             type: "text",
@@ -201,25 +344,35 @@ Output plain text only. Use line breaks between paragraphs. No markdown, no JSON
             content: [
               {
                 type: "text",
-                text: `Student profile:\n${studentContext}\n\nCampaign context:\n${campaignContext}`,
+                text: JSON.stringify(studentFields, null, 2),
                 cache_control: { type: "ephemeral" },
               },
               {
                 type: "text",
-                text: `Professor: ${prof.name}, ${prof.department ?? "(department unknown)"}, ${profUniversity}\nTitle: ${profTitle || "(not provided)"}\nResearch focus: ${profResearch}`,
+                text: JSON.stringify(professorFields, null, 2),
               },
             ],
           },
         ],
       });
 
-      const body = response.content
+      const raw = response.content
         .filter((b) => b.type === "text")
         .map((b) => (b as { type: "text"; text: string }).text)
         .join("")
         .trim();
 
-      if (!body) throw new Error("Empty response from Claude");
+      if (!raw) throw new Error("Empty response from Claude");
+
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+      const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
+      const modelBody = typeof parsed.body === "string" ? parsed.body.trim() : "";
+
+      if (!subject || !modelBody) throw new Error("Invalid response shape from Claude");
+
+      const signOff = SIGN_OFFS[Math.floor(Math.random() * SIGN_OFFS.length)];
+      const body = `${modelBody}\n\n${signOff},\n${profile?.name ?? ""}`.trim();
 
       return {
         user_id: user.id,

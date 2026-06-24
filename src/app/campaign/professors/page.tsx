@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, Mail } from "lucide-react";
-import type { Professor } from "@/lib/types";
+import type { CampaignProfessorView as Professor } from "@/lib/types";
 import { cleanDescription } from "@/lib/utils";
 
 // Maps raw AI scores (which skew conservative) to display percentages that

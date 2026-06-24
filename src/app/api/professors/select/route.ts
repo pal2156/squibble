@@ -25,14 +25,15 @@ export async function POST(request: Request) {
 
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
 
-  // Unselect all, then select chosen ones
-  await supabase.from("professors").update({ selected: false }).eq("campaign_id", campaignId);
+  // selectedIds are professors.id values. Unselect all, then select chosen ones.
+  await supabase.from("campaign_professors").update({ selected_by_student: false }).eq("campaign_id", campaignId);
 
   if (selectedIds.length > 0) {
     await supabase
-      .from("professors")
-      .update({ selected: true })
-      .in("id", selectedIds);
+      .from("campaign_professors")
+      .update({ selected_by_student: true })
+      .eq("campaign_id", campaignId)
+      .in("professor_id", selectedIds);
   }
 
   return NextResponse.json({ ok: true });

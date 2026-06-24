@@ -33,9 +33,89 @@ export interface Campaign {
   created_at: string;
 }
 
+export type FacultyPageLevel = "subgroup" | "subfield" | "department";
+export type FacultyPageScrapeStatus = "ok" | "error" | "empty";
+
+export interface FacultyPage {
+  id: string;
+  university: string;
+  normalized_university: string;
+  department_name: string | null;
+  page_url: string;
+  level: FacultyPageLevel;
+  scraped_at: string | null;
+  scrape_in_progress: boolean;
+  last_scrape_status: FacultyPageScrapeStatus | null;
+  last_accessed_at: string | null;
+  created_at: string;
+}
+
+export interface UrlDiscoveryCache {
+  id: string;
+  normalized_university: string;
+  normalized_research_interest: string;
+  faculty_page_ids: string[];
+  discovered_at: string;
+  created_at: string;
+}
+
+export type ProfessorRoleTag =
+  | "professor"
+  | "assistant_professor"
+  | "associate_professor"
+  | "postdoc"
+  | "research_scientist"
+  | "grad_student"
+  | "chair"
+  | "emeritus"
+  | "visiting_scholar"
+  | "lecturer"
+  | "other";
+
+// Cross-campaign, one row per person. Not scoped to any single campaign —
+// see CampaignProfessor for the campaign-scoped scoring and selection state.
 export interface Professor {
   id: string;
+  faculty_page_ids: string[];
+  normalized_name: string;
+  name: string;
+  title: string | null;
+  role_tag: ProfessorRoleTag;
+  email: string | null;
+  research_description: string | null;
+  education: string | null;
+  profile_urls: string[];
+  other: string | null;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecentPaper {
+  title: string;
+  year: number | null;
+}
+
+export interface CampaignProfessor {
+  id: string;
   campaign_id: string;
+  professor_id: string;
+  domain_fit_score: number | null;
+  connection_summary: string | null;
+  capacity_notes: string | null;
+  final_score: number | null;
+  reasoning: string | null;
+  in_top_n: boolean;
+  recent_papers: RecentPaper[] | null;
+  selected_by_student: boolean;
+  created_at: string;
+}
+
+// Display shape used by /campaign/professors — a campaign_professors row
+// joined with its professors and faculty_pages rows, shaped to match what the
+// professor cards and selection flow need.
+export interface CampaignProfessorView {
+  id: string;
   name: string;
   department: string | null;
   university: string | null;
@@ -43,7 +123,7 @@ export interface Professor {
   description: string | null;
   email: string | null;
   fit_score: number | null;
-  research_areas: string[] | null;
+  research_areas: string[];
   selected: boolean;
   created_at: string;
 }

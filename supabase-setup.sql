@@ -314,3 +314,155 @@ create policy "own" on public.bounces for all
 --     positive/negative). Without this the client-side channel subscription
 --     silently receives nothing.
 alter publication supabase_realtime add table public.emails;
+
+-- ─────────────────────────────────────────────
+-- FACULTY CACHE SCHEMA — run after the above.
+-- Replaces the campaign-scoped public.professors table with a cross-campaign
+-- professors table, plus faculty_pages (one row per URL), url_discovery_cache
+-- (Claude + web search URL lookups, 3 month TTL), and campaign_professors
+-- (campaign-scoped scoring and state, formerly columns on professors).
+-- Safe to run on a database that already has the old professors table; the
+-- migration block below moves existing rows into campaign_professors before
+-- dropping the old campaign-scoped columns.
+-- ─────────────────────────────────────────────
+
+-- 20. faculty_pages
+create table if not exists public.faculty_pages (
+  id uuid primary key default gen_random_uuid(),
+  university text not null,
+  normalized_university text not null,
+  department_name text,
+  page_url text not null unique,
+  level text not null check (level in ('subgroup', 'subfield', 'department')),
+  scraped_at timestamptz,
+  scrape_in_progress boolean not null default false,
+  last_scrape_status text check (last_scrape_status in ('ok', 'error', 'empty')),
+  last_accessed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.faculty_pages enable row level security;
+drop policy if exists "authenticated read/write" on public.faculty_pages;
+create policy "authenticated read/write" on public.faculty_pages for all
+  using (auth.role() = 'authenticated');
+
+-- 21. url_discovery_cache
+create table if not exists public.url_discovery_cache (
+  id uuid primary key default gen_random_uuid(),
+  normalized_university text not null,
+  normalized_research_interest text not null,
+  faculty_page_ids uuid[] not null default '{}',
+  discovered_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (normalized_university, normalized_research_interest)
+);
+
+alter table public.url_discovery_cache enable row level security;
+drop policy if exists "authenticated read/write" on public.url_discovery_cache;
+create policy "authenticated read/write" on public.url_discovery_cache for all
+  using (auth.role() = 'authenticated');
+
+-- 22. campaign_professors — campaign-scoped scoring/state. One row per
+--     professor considered in a campaign; nothing here is reused across
+--     campaigns. References public.professors(id), which is created/altered
+--     below — the FK is added after that table reaches its final shape.
+create table if not exists public.campaign_professors (
+  id uuid primary key default gen_random_uuid(),
+  campaign_id uuid not null references public.campaigns(id) on delete cascade,
+  professor_id uuid not null,
+  domain_fit_score int,
+  connection_summary text,
+  capacity_notes text,
+  final_score int,
+  reasoning text,
+  in_top_n boolean not null default false,
+  recent_papers jsonb,
+  selected_by_student boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (campaign_id, professor_id)
+);
+
+alter table public.campaign_professors add column if not exists connection_summary text;
+
+alter table public.campaign_professors enable row level security;
+drop policy if exists "own" on public.campaign_professors;
+create policy "own" on public.campaign_professors for all
+  using (campaign_id in (select id from public.campaigns where user_id = auth.uid()));
+
+-- 23. Migrate public.professors from campaign-scoped to cross-campaign shape.
+--     Runs only if the old campaign_id column is still present, so re-running
+--     this whole file is safe.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'professors' and column_name = 'campaign_id'
+  ) then
+    -- Backfill campaign_professors from the old campaign-scoped rows before
+    -- campaign_id / fit_score / selected are dropped below. Keeps the same
+    -- professor id so emails.professor_id (FK'd to professors.id) keeps working.
+    insert into public.campaign_professors (
+      campaign_id, professor_id, domain_fit_score, final_score, in_top_n, selected_by_student, created_at
+    )
+    select campaign_id, id, fit_score, fit_score, true, coalesce(selected, false), created_at
+    from public.professors
+    where campaign_id is not null
+    on conflict (campaign_id, professor_id) do nothing;
+
+    -- Drop the old RLS policy, which depended on the campaign_id column.
+    drop policy if exists "own" on public.professors;
+
+    -- Add the new cross-campaign columns.
+    alter table public.professors add column if not exists faculty_page_ids uuid[] not null default '{}';
+    alter table public.professors add column if not exists normalized_name text;
+    alter table public.professors add column if not exists role_tag text;
+    alter table public.professors add column if not exists research_description text;
+    alter table public.professors add column if not exists education text;
+    alter table public.professors add column if not exists profile_urls text[] not null default '{}';
+    alter table public.professors add column if not exists other text;
+    alter table public.professors add column if not exists active boolean not null default true;
+    alter table public.professors add column if not exists updated_at timestamptz not null default now();
+
+    -- Backfill the new columns from the old ones.
+    update public.professors set
+      normalized_name = lower(trim(regexp_replace(name, '\s+', ' ', 'g'))),
+      research_description = description,
+      role_tag = coalesce(role_tag, 'other'),
+      updated_at = created_at
+    where normalized_name is null;
+
+    -- Drop the old campaign-scoped columns now that their data lives in campaign_professors.
+    alter table public.professors drop column if exists campaign_id;
+    alter table public.professors drop column if exists department;
+    alter table public.professors drop column if exists university;
+    alter table public.professors drop column if exists fit_score;
+    alter table public.professors drop column if exists research_areas;
+    alter table public.professors drop column if exists selected;
+    alter table public.professors drop column if exists description;
+
+    alter table public.professors alter column normalized_name set not null;
+    alter table public.professors alter column role_tag set not null;
+  end if;
+end $$;
+
+alter table public.professors enable row level security;
+drop policy if exists "authenticated read/write" on public.professors;
+create policy "authenticated read/write" on public.professors for all
+  using (auth.role() = 'authenticated');
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'professors_role_tag_check') then
+    alter table public.professors add constraint professors_role_tag_check
+      check (role_tag in (
+        'professor', 'assistant_professor', 'associate_professor', 'postdoc',
+        'research_scientist', 'grad_student', 'chair', 'emeritus',
+        'visiting_scholar', 'lecturer', 'other'
+      ));
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'campaign_professors_professor_id_fkey') then
+    alter table public.campaign_professors add constraint campaign_professors_professor_id_fkey
+      foreign key (professor_id) references public.professors(id) on delete cascade;
+  end if;
+end $$;
