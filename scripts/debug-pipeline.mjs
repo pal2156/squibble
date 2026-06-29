@@ -231,7 +231,7 @@ try {
   const batchRequestBody = {
     urls: testUrls,
     formats: ["json"],
-    onlyMainContent: true,
+    onlyMainContent: false,
     jsonOptions: {
       prompt: PROFILE_EXTRACTION_PROMPT,
       schema: PROFILE_EXTRACTION_SCHEMA,

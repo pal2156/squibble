@@ -112,7 +112,7 @@ export async function batchScrapeProfiles(profileUrls: string[]): Promise<Scrape
     body: JSON.stringify({
       urls: profileUrls,
       formats: ["json"],
-      onlyMainContent: true,
+      onlyMainContent: false,
       jsonOptions: {
         prompt: PROFILE_EXTRACTION_PROMPT,
         schema: PROFILE_EXTRACTION_SCHEMA,
