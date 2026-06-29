@@ -19,28 +19,32 @@ export type FirecrawlMapResult =
 
 export async function mapFacultyPage(pageUrl: string): Promise<FirecrawlMapResult> {
   try {
-    const res = await fetch(`${FIRECRAWL_BASE_URL}/map`, {
+    // Use /scrape with formats:["links"] rather than /map. The /map endpoint
+    // reads only static HTML and misses faculty links rendered by JavaScript.
+    // /scrape runs a headless browser so the fully-rendered link list comes back.
+    const res = await fetch(`${FIRECRAWL_BASE_URL}/scrape`, {
       method: "POST",
       headers: firecrawlHeaders(),
       body: JSON.stringify({
         url: pageUrl,
-        includeSubdomains: false,
-        sitemapOnly: false,
+        formats: ["links"],
+        onlyMainContent: false,
       }),
     });
 
     if (!res.ok) {
-      console.error(`[firecrawl] map failed for ${pageUrl}: ${res.status}`);
+      console.error(`[firecrawl] scrape-for-links failed for ${pageUrl}: ${res.status} ${await res.text().catch(() => "")}`);
       return { ok: false, reason: "error" };
     }
 
     const json = await res.json();
-    const urls = (json?.links ?? []) as string[];
+    const urls = (json?.data?.links ?? []) as string[];
+    console.log(`[firecrawl] scrape-for-links ${pageUrl}: ${urls.length} links`);
 
     if (urls.length === 0) return { ok: false, reason: "empty" };
     return { ok: true, urls };
   } catch (err) {
-    console.error(`[firecrawl] map threw for ${pageUrl}:`, err instanceof Error ? err.message : err);
+    console.error(`[firecrawl] scrape-for-links threw for ${pageUrl}:`, err instanceof Error ? err.message : err);
     return { ok: false, reason: "error" };
   }
 }

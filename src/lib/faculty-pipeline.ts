@@ -242,17 +242,18 @@ type PostProcessedProfessor = {
   name: string;
   title: string | null;
   role_tag: ProfessorRoleTag;
-  email: string;
+  email: string | null;
   research_description: string;
   education: string | null;
   profile_urls: string[];
   other: string | null;
 };
 
-// Discards incomplete records (no email or no research_description), then
+// Discards records with no research_description (can't rank without it), then
 // merges duplicate names found on the same page's scrape into a single record.
+// Email is kept when present but not required — many university pages omit it.
 function postProcessScrapedProfiles(scraped: ScrapedProfile[]): PostProcessedProfessor[] {
-  const survivors = scraped.filter((p) => p.email && p.research_description);
+  const survivors = scraped.filter((p) => p.research_description);
 
   const byNormalizedName = new Map<string, PostProcessedProfessor>();
 
@@ -266,7 +267,7 @@ function postProcessScrapedProfiles(scraped: ScrapedProfile[]): PostProcessedPro
         name: p.name,
         title: p.title || null,
         role_tag: ROLE_TAGS.includes(p.role_tag as ProfessorRoleTag) ? (p.role_tag as ProfessorRoleTag) : "other",
-        email: p.email as string,
+        email: p.email ?? null,
         research_description: p.research_description as string,
         education: p.education,
         profile_urls: profileUrl ? [profileUrl] : [],
@@ -277,7 +278,7 @@ function postProcessScrapedProfiles(scraped: ScrapedProfile[]): PostProcessedPro
 
     // Same name appeared twice on this page's scrape: merge, don't drop either.
     existing.research_description = [existing.research_description, p.research_description].filter(Boolean).join("\n\n");
-    existing.email = [existing.email, p.email].filter(Boolean).join(",");
+    existing.email = [existing.email, p.email].filter(Boolean).join(",") || null;
     existing.education = [existing.education, p.education].filter(Boolean).join("\n\n") || null;
     existing.other = [existing.other, p.other].filter(Boolean).join("\n\n") || null;
     if (profileUrl) existing.profile_urls.push(profileUrl);
@@ -302,7 +303,7 @@ async function scrapeFacultyListingPage(
   if (scraped.length === 0) return { ok: false, reason: "empty" };
 
   const professors = postProcessScrapedProfiles(scraped);
-  console.log(`[pipeline] postProcess: ${professors.length} professors passed email+research filter`);
+  console.log(`[pipeline] postProcess: ${professors.length} professors passed research filter`);
   if (professors.length === 0) return { ok: false, reason: "empty" };
 
   return { ok: true, professors };
@@ -350,7 +351,7 @@ async function upsertProfessorsForPage(
         .from("professors")
         .update({
           title: p.title,
-          email: p.email,
+          email: p.email ?? existing.email,
           research_description: p.research_description,
           role_tag: p.role_tag,
           education: p.education,
