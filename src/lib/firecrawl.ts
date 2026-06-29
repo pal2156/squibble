@@ -135,7 +135,7 @@ export async function batchScrapeProfiles(profileUrls: string[]): Promise<Scrape
 }
 
 const BATCH_POLL_INTERVAL_MS = 3000;
-const BATCH_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+const BATCH_POLL_TIMEOUT_MS = 3 * 60 * 1000;
 
 async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
   const deadline = Date.now() + BATCH_POLL_TIMEOUT_MS;

@@ -1,5 +1,8 @@
 {
   "functions": {
+    "src/app/api/campaign/find-faculty/route.ts": {
+      "maxDuration": 300
+    },
     "src/app/api/gmail/webhook/route.ts": {
       "maxDuration": 60
     }

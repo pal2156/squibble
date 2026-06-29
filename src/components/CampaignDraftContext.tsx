@@ -6,10 +6,7 @@ import type { ReactNode } from "react";
 interface CampaignDraft {
   university: string;
   research: string;
-  positionType: string;
-  timeCommitment: string;
   availability: string;
-  locationPref: string;
   contactCount: number;
   rawCount: string;
 }
@@ -17,10 +14,7 @@ interface CampaignDraft {
 const DEFAULT_DRAFT: CampaignDraft = {
   university: "",
   research: "",
-  positionType: "",
-  timeCommitment: "",
   availability: "",
-  locationPref: "",
   contactCount: 10,
   rawCount: "10",
 };

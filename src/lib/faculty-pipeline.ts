@@ -392,13 +392,14 @@ async function upsertProfessorsForPage(
   }
 }
 
-async function waitForScrapeToFinish(supabase: SupabaseClient, pageId: string): Promise<void> {
+async function waitForScrapeToFinish(supabase: SupabaseClient, pageId: string): Promise<boolean> {
   const deadline = Date.now() + SCRAPE_WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     const { data: page } = await supabase.from("faculty_pages").select("scrape_in_progress").eq("id", pageId).single();
-    if (!page || !page.scrape_in_progress) return;
+    if (!page || !page.scrape_in_progress) return true;
     await new Promise((r) => setTimeout(r, SCRAPE_WAIT_POLL_MS));
   }
+  return false;
 }
 
 // Ensures a single faculty page's professor roster is fresh per the 1 month
@@ -410,30 +411,42 @@ export async function ensureFacultyPageFresh(supabase: SupabaseClient, pageId: s
 
   const isPageFresh = isFresh(page.scraped_at, SCRAPE_TTL_MS);
 
+  let shouldScrape = false;
+
   if (!isPageFresh) {
     if (page.scrape_in_progress) {
-      await waitForScrapeToFinish(supabase, pageId);
-    } else {
-      await supabase.from("faculty_pages").update({ scrape_in_progress: true }).eq("id", pageId);
-
-      const result = await scrapeFacultyListingPage(page.page_url);
-
-      if (!result.ok) {
-        await supabase
-          .from("faculty_pages")
-          .update({ scrape_in_progress: false, last_scrape_status: result.reason })
-          .eq("id", pageId);
-      } else {
-        await upsertProfessorsForPage(supabase, pageId, result.professors);
-        await supabase
-          .from("faculty_pages")
-          .update({
-            scrape_in_progress: false,
-            scraped_at: new Date().toISOString(),
-            last_scrape_status: "ok",
-          })
-          .eq("id", pageId);
+      const finished = await waitForScrapeToFinish(supabase, pageId);
+      if (!finished) {
+        // Previous function was killed mid-scrape and left the lock stuck.
+        // Break it so this request can take over.
+        await supabase.from("faculty_pages").update({ scrape_in_progress: false }).eq("id", pageId);
+        shouldScrape = true;
       }
+    } else {
+      shouldScrape = true;
+    }
+  }
+
+  if (shouldScrape) {
+    await supabase.from("faculty_pages").update({ scrape_in_progress: true }).eq("id", pageId);
+
+    const result = await scrapeFacultyListingPage(page.page_url);
+
+    if (!result.ok) {
+      await supabase
+        .from("faculty_pages")
+        .update({ scrape_in_progress: false, last_scrape_status: result.reason })
+        .eq("id", pageId);
+    } else {
+      await upsertProfessorsForPage(supabase, pageId, result.professors);
+      await supabase
+        .from("faculty_pages")
+        .update({
+          scrape_in_progress: false,
+          scraped_at: new Date().toISOString(),
+          last_scrape_status: "ok",
+        })
+        .eq("id", pageId);
     }
   }
 

@@ -1,3 +1,5 @@
+export const maxDuration = 300;
+
 import { createClient } from "@/lib/supabase/server";
 import { anthropic, extractJsonString, parseClaudeJson, HAIKU, SONNET } from "@/lib/anthropic";
 import {

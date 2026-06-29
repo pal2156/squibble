@@ -14,9 +14,6 @@ const inputStyle = (filled: boolean) => ({
   boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
 });
 
-const selectClassName =
-  "w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 appearance-none";
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-xs font-medium uppercase tracking-widest mb-3" style={{ color: "#678E8D", letterSpacing: "0.08em" }}>
@@ -28,7 +25,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function CampaignPage() {
   const router = useRouter();
   const { draft, setDraft, resetDraft } = useCampaignDraft();
-  const { university, research, positionType, timeCommitment, availability, locationPref, contactCount, rawCount } = draft;
+  const { university, research, availability, contactCount, rawCount } = draft;
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState("Finding the right department...");
   const [error, setError] = useState<string | null>(null);
@@ -100,10 +97,7 @@ export default function CampaignPage() {
         body: JSON.stringify({
           university,
           research_interest: research,
-          position_type: positionType || null,
-          time_commitment: timeCommitment || null,
           availability: availability || null,
-          location_preference: locationPref || null,
           professor_count: contactCount,
         }),
       });
@@ -182,9 +176,9 @@ export default function CampaignPage() {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-5 mb-6">
-          {/* Left: Campaign scope */}
-          <div className="flex-1 rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+        <div className="flex flex-col gap-5 mb-6">
+          {/* Campaign scope */}
+          <div className="rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
             <SectionLabel>Campaign scope</SectionLabel>
             <div className="space-y-2.5">
               <input
@@ -195,71 +189,36 @@ export default function CampaignPage() {
                 className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
                 style={inputStyle(!!university)}
               />
-              <textarea
-                value={research}
-                onChange={(e) => setDraft({ research: e.target.value })}
-                placeholder="e.g. Condensed matter physics or Behavioral economics"
-                rows={4}
-                className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none"
-                style={inputStyle(!!research)}
-              />
+              <div>
+                <textarea
+                  value={research}
+                  onChange={(e) => setDraft({ research: e.target.value })}
+                  placeholder="What are you interested in researching?"
+                  rows={4}
+                  className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150 resize-none"
+                  style={inputStyle(!!research)}
+                />
+                <p className="text-xs" style={{ color: "var(--ink-secondary)", marginTop: 6 }}>
+                  e.g. Number Theory; Behavioral Economics; The study of graphene, Moiré systems and Kagome lattices
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Right: Logistics */}
-          <div className="flex-1 rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+          {/* Logistics */}
+          <div className="rounded-xl p-5" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
             <SectionLabel>Logistics</SectionLabel>
-            <div className="space-y-2.5">
-              <select
-                value={positionType}
-                onChange={(e) => setDraft({ positionType: e.target.value })}
-                className={selectClassName}
-                style={inputStyle(!!positionType)}
-              >
-                <option value="" disabled>Position type</option>
-                <option>Paid</option>
-                <option>Unpaid</option>
-                <option>Flexible / Open to any</option>
-              </select>
-
-              <select
-                value={timeCommitment}
-                onChange={(e) => setDraft({ timeCommitment: e.target.value })}
-                className={selectClassName}
-                style={inputStyle(!!timeCommitment)}
-              >
-                <option value="" disabled>Time commitment</option>
-                <option>Full-time (40+ hrs/week)</option>
-                <option>Part-time (10-20 hrs/week)</option>
-                <option>Part-time (20-30 hrs/week)</option>
-                <option>Flexible</option>
-              </select>
-
-              <input
-                type="text"
-                value={availability}
-                onChange={(e) => setDraft({ availability: e.target.value })}
-                placeholder="When and how long are you available?"
-                className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
-                style={inputStyle(!!availability)}
-              />
-              <p className="text-xs" style={{ color: "var(--ink-secondary)", marginTop: 2 }}>
-                e.g. Mid-May to mid-August
-              </p>
-
-              <select
-                value={locationPref}
-                onChange={(e) => setDraft({ locationPref: e.target.value })}
-                className={selectClassName}
-                style={inputStyle(!!locationPref)}
-              >
-                <option value="" disabled>Location preference</option>
-                <option>On-site only</option>
-                <option>Remote only</option>
-                <option>Hybrid</option>
-                <option>No preference</option>
-              </select>
-            </div>
+            <input
+              type="text"
+              value={availability}
+              onChange={(e) => setDraft({ availability: e.target.value })}
+              placeholder="When are you available?"
+              className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
+              style={inputStyle(!!availability)}
+            />
+            <p className="text-xs" style={{ color: "var(--ink-secondary)", marginTop: 6 }}>
+              e.g. Mid-May to mid-August
+            </p>
           </div>
         </div>
 
