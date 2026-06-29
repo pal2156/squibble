@@ -102,24 +102,22 @@ export type ScrapedProfile = {
 export async function batchScrapeProfiles(profileUrls: string[]): Promise<ScrapedProfile[]> {
   if (profileUrls.length === 0) return [];
 
-  const res = await fetch(`${FIRECRAWL_BASE_URL}/batch_scrape`, {
+  const res = await fetch(`${FIRECRAWL_BASE_URL}/batch/scrape`, {
     method: "POST",
     headers: firecrawlHeaders(),
     body: JSON.stringify({
       urls: profileUrls,
-      scrapeOptions: {
-        formats: ["json"],
-        onlyMainContent: true,
-        jsonOptions: {
-          prompt: PROFILE_EXTRACTION_PROMPT,
-          schema: PROFILE_EXTRACTION_SCHEMA,
-        },
+      formats: ["json"],
+      onlyMainContent: true,
+      jsonOptions: {
+        prompt: PROFILE_EXTRACTION_PROMPT,
+        schema: PROFILE_EXTRACTION_SCHEMA,
       },
     }),
   });
 
   if (!res.ok) {
-    console.error(`[firecrawl] batch_scrape failed: ${res.status}`);
+    console.error(`[firecrawl] batch/scrape failed: ${res.status} ${await res.text().catch(() => "")}`);
     return [];
   }
 
@@ -141,12 +139,12 @@ async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
   const deadline = Date.now() + BATCH_POLL_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
-    const res = await fetch(`${FIRECRAWL_BASE_URL}/batch_scrape/${jobId}`, {
+    const res = await fetch(`${FIRECRAWL_BASE_URL}/batch/scrape/${jobId}`, {
       headers: firecrawlHeaders(),
     });
 
     if (!res.ok) {
-      console.error(`[firecrawl] batch_scrape poll failed: ${res.status}`);
+      console.error(`[firecrawl] batch/scrape poll failed: ${res.status}`);
       return [];
     }
 
@@ -154,15 +152,14 @@ async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
     const status = json?.status as string | undefined;
 
     if (status === "completed") {
-      const data = (json?.data ?? []) as Array<{
-        json?: Record<string, unknown>;
-        metadata?: { sourceURL?: string };
-      }>;
+      const data = (json?.data ?? []) as Array<Record<string, unknown>>;
+      console.log(`[firecrawl] job ${jobId} completed: ${data.length} items; keys in first item: ${JSON.stringify(Object.keys(data[0] ?? {}))}`);
 
       return data
-        .filter((item) => item.json)
         .map((item) => {
-          const j = item.json as Record<string, unknown>;
+          // Firecrawl returns LLM-extracted data in item.json
+          const j = (item.json ?? item.extract) as Record<string, unknown> | undefined;
+          if (!j) return null;
           return {
             name: (j.name as string) ?? "",
             title: (j.title as string) ?? "",
@@ -172,20 +169,20 @@ async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
             education: (j.education as string | null) ?? null,
             profile_url: (j.profile_url as string | null) ?? null,
             other: (j.other as string | null) ?? null,
-            source_url: item.metadata?.sourceURL ?? (j.profile_url as string) ?? "",
+            source_url: (item.metadata as { sourceURL?: string } | undefined)?.sourceURL ?? (j.profile_url as string) ?? "",
           };
         })
-        .filter((p) => p.name.trim().length > 0);
+        .filter((p): p is NonNullable<typeof p> => p !== null && p.name.trim().length > 0);
     }
 
     if (status === "failed" || status === "cancelled") {
-      console.error(`[firecrawl] batch_scrape job ${jobId} ended with status ${status}`);
+      console.error(`[firecrawl] job ${jobId} ended with status ${status}`);
       return [];
     }
 
     await new Promise((r) => setTimeout(r, BATCH_POLL_INTERVAL_MS));
   }
 
-  console.error(`[firecrawl] batch_scrape job ${jobId} timed out`);
+  console.error(`[firecrawl] job ${jobId} timed out after ${BATCH_POLL_TIMEOUT_MS / 1000}s`);
   return [];
 }

@@ -290,15 +290,19 @@ async function scrapeFacultyListingPage(
   listingPageUrl: string
 ): Promise<{ ok: true; professors: PostProcessedProfessor[] } | { ok: false; reason: "error" | "empty" }> {
   const mapResult = await mapFacultyPage(listingPageUrl);
+  console.log(`[pipeline] map ${listingPageUrl}: ok=${mapResult.ok}, urls=${mapResult.ok ? mapResult.urls.length : 0}`);
   if (!mapResult.ok) return { ok: false, reason: mapResult.reason };
 
   const profileUrls = await filterToProfileUrls(mapResult.urls, listingPageUrl);
+  console.log(`[pipeline] filterToProfileUrls: ${profileUrls.length} profile URLs`);
   if (profileUrls.length === 0) return { ok: false, reason: "empty" };
 
   const scraped = await batchScrapeProfiles(profileUrls);
+  console.log(`[pipeline] batchScrapeProfiles: ${scraped.length} scraped, ${scraped.filter(p => p.email).length} with email, ${scraped.filter(p => p.research_description).length} with research_description`);
   if (scraped.length === 0) return { ok: false, reason: "empty" };
 
   const professors = postProcessScrapedProfiles(scraped);
+  console.log(`[pipeline] postProcess: ${professors.length} professors passed email+research filter`);
   if (professors.length === 0) return { ok: false, reason: "empty" };
 
   return { ok: true, professors };
