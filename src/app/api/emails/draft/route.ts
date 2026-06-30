@@ -243,7 +243,7 @@ Banned in P2: "extensive experience," "I am highly motivated," "I am passionate 
 
 1-2 sentences. This is where the student makes their ask. Frame it as an offer, not a demand. Sound flexible and willing, not desperate.
 
-**Timeline phrasing** — Before writing P3, determine which case applies from the raw `availability` field and construct an [availability phrase] accordingly. Never mechanically insert the raw text into a fixed "from X through Y" slot.
+**Timeline phrasing** — Before writing P3, determine which case applies from the raw availability field and construct an [availability phrase] accordingly. Never mechanically insert the raw text into a fixed "from X through Y" slot.
 
 - Two distinct months or a date range (e.g. "September through December", "Sept-Dec"): phrase as "from [Month] through [Month]"
 - A semester or named period (e.g. "Fall Semester", "Fall Semester (September through December)", "Spring 2027"): phrase as "during the [Semester Name]". Omit the underlying month range if the semester name already implies it; include it only if the name alone is ambiguous.
