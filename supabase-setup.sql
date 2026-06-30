@@ -80,10 +80,7 @@ create table if not exists public.campaigns (
   title text,
   university text,
   research_interest text,
-  position_type text,
-  time_commitment text,
   availability text,
-  location_preference text,
   professor_count int default 10,
   status text default 'active',
   created_at timestamptz default now()
@@ -383,6 +380,7 @@ create table if not exists public.campaign_professors (
 );
 
 alter table public.campaign_professors add column if not exists connection_summary text;
+alter table public.campaign_professors add column if not exists card_description text;
 
 alter table public.campaign_professors enable row level security;
 drop policy if exists "own" on public.campaign_professors;

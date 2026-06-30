@@ -8,8 +8,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const {
-    university, research_interest, position_type,
-    time_commitment, availability, location_preference, professor_count,
+    university, research_interest, availability, professor_count,
   } = body;
 
   if (!university || !research_interest) {
@@ -22,10 +21,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       university,
       research_interest,
-      position_type: position_type || null,
-      time_commitment: time_commitment || null,
       availability: availability || null,
-      location_preference: location_preference || null,
       professor_count: professor_count ?? 10,
       status: "finding",
     })

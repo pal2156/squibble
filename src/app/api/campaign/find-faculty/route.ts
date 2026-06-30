@@ -8,7 +8,7 @@ import {
   getActiveProfessorsForPages,
 } from "@/lib/faculty-pipeline";
 import { findRecentPapers } from "@/lib/semantic-scholar";
-import type { Professor } from "@/lib/types";
+import type { Professor, RecentPaper } from "@/lib/types";
 
 const CONCURRENCY_LIMIT = 3;
 
@@ -219,6 +219,109 @@ Return ONLY JSON: {"title": "..."}`,
   }
 }
 
+const CARD_DESCRIPTION_SYSTEM_PROMPT = `You are writing the research description a student will read on a professor's
+match card. You will be given that professor's self-reported research
+description from their faculty page, their most recent paper titles with years
+(if any were found), and a tier classification describing how those papers
+relate to the description. Write one short paragraph.
+
+Grounding rule
+
+Use only what is stated in the research description and, for the drifted case
+only, what is evident in the paper titles. Do not infer methods, sub-specialties,
+honors, or any other detail that is not explicitly present in the input. If the
+research description is long or contains multiple concatenated sections
+(keywords, a summary statement, a detailed paragraph), synthesize it into one
+tight paragraph. Do not transcribe it at length.
+
+Length
+
+Two to three sentences. Roughly 35 to 55 words. This is a card, not a profile
+page. Err short over long.
+
+Voice and style
+
+Write in third person, present tense. Never use "you" or address the student
+directly, this paragraph is a description, not a message to anyone. Never use an
+em dash. Avoid filler and inflated language: "passionate about," "cutting-edge,"
+"groundbreaking," "delve into," "world-class," "renowned," "pioneering." State
+what the person works on plainly and specifically. Specificity is the entire
+value of this paragraph, a vague paragraph is a failed paragraph regardless of
+how polished it sounds.
+
+Never quote a paper title directly inside the paragraph. Titles are already
+shown separately in the Recent Papers list below the description. Referencing
+them by name here is redundant.
+
+Never mention the tier, the comparison process, Semantic Scholar, or any other
+internal mechanism. The student should never be able to tell this paragraph was
+checked against anything. Write the output, not a description of how the output
+was produced.
+
+Construction by tier
+
+confirmed and neutral and not_found: Write a plain description of the
+professor's stated research focus, drawn from research_description only. Do not
+reference papers, presence or absence of papers, or recency at all. These three
+tiers read identically in prose, the only difference between them is invisible
+to the student and lives in the score adjustment, not the text.
+
+drifted: Use exactly two sentences. The first states the professor's claimed
+focus, condensed from research_description into one clause. The second pivots to
+what the recent papers actually indicate, using neutral, non-judgmental bridge
+language such as "more recently," "in the past few years," or "recent
+publications instead center on." Base the described direction only on what the
+paper titles themselves support. If the titles clearly converge on a specific
+area, name it. If they are varied or ambiguous, describe the direction in
+general terms rather than inventing false precision. Do not use language that
+frames this as a flaw, mistake, or abandonment: avoid "no longer," "abandoned,"
+"moved away from." This is a factual update for the student's benefit, not a
+judgment of the professor.
+
+Example shape for drifted (illustrative only, do not reuse this exact wording):
+"States a focus on computational astrophysics and exoplanet detection. Recent
+publications, however, center on machine learning methods for large-scale survey
+data."
+
+Output
+
+Return only a JSON object in this exact format, with no surrounding text:
+
+{
+  "description": "The finished paragraph."
+}`;
+
+async function generateCardDescription(
+  researchDescription: string | null,
+  papers: RecentPaper[] | null,
+  tier: string
+): Promise<string | null> {
+  if (!researchDescription) return null;
+  try {
+    const res = await anthropic.messages.create({
+      model: SONNET,
+      max_tokens: 200,
+      system: CARD_DESCRIPTION_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: JSON.stringify({
+            research_description: researchDescription,
+            recent_papers: papers ?? [],
+            tier,
+          }),
+        },
+      ],
+    });
+    const raw = extractText(res.content);
+    const parsed = parseClaudeJson<{ description: string }>(raw);
+    return typeof parsed.description === "string" ? parsed.description.trim() : null;
+  } catch (err) {
+    console.error("[card-description] generation failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
   const {
@@ -334,12 +437,17 @@ export async function POST(request: Request) {
 
         controller.enqueue(sse({ type: "progress", message: "Looking up recent publications..." }));
 
-        // Step 5 (Semantic Scholar): top N only, run in parallel with a
-        // concurrency limit of 3, never cached.
-        const recentPapersById = new Map<string, Awaited<ReturnType<typeof findRecentPapers>>>();
+        // Step 5 (Semantic Scholar + card descriptions): top N only, run in
+        // parallel with a concurrency limit of 3, never cached.
+        type ProfEnrichment = {
+          papers: RecentPaper[] | null;
+          cardDescription: string | null;
+        };
+        const enrichmentById = new Map<string, ProfEnrichment>();
         await runWithConcurrencyLimit(topN, CONCURRENCY_LIMIT, async ({ professor }) => {
-          const papers = await findRecentPapers(professor, campaign.university);
-          recentPapersById.set(professor.id, papers);
+          const { papers, tier } = await findRecentPapers(professor, campaign.university);
+          const cardDescription = await generateCardDescription(professor.research_description, papers, tier);
+          enrichmentById.set(professor.id, { papers, cardDescription });
         });
 
         controller.enqueue(sse({ type: "progress", message: "Saving results..." }));
@@ -353,7 +461,8 @@ export async function POST(request: Request) {
           final_score: score.final_score,
           reasoning: score.reasoning,
           in_top_n: topNIds.has(professor.id),
-          recent_papers: recentPapersById.get(professor.id) ?? null,
+          recent_papers: enrichmentById.get(professor.id)?.papers ?? null,
+          card_description: enrichmentById.get(professor.id)?.cardDescription ?? null,
           selected_by_student: false,
         }));
 

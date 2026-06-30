@@ -120,63 +120,97 @@ async function fetchAuthorPapers(authorId: string): Promise<Paper[]> {
   return (json?.data ?? []) as Paper[];
 }
 
+export type PaperTier = "confirmed" | "drifted" | "neutral" | "not_found";
+
+export type FindPapersResult = {
+  papers: RecentPaper[] | null;
+  tier: PaperTier;
+};
+
+function topDatedPapers(papers: Paper[]): RecentPaper[] {
+  return papers
+    .filter((p): p is { title: string; year: number } => !!p.title && p.year != null)
+    .sort((a, b) => b.year - a.year)
+    .slice(0, 3)
+    .map((p) => ({ title: p.title, year: p.year }));
+}
+
 export async function findRecentPapers(
   professor: Professor,
   university: string
-): Promise<RecentPaper[] | null> {
+): Promise<FindPapersResult> {
   try {
     const allCandidates = await searchAuthors(professor.name);
+    console.log(`[semantic-scholar] ${professor.name}: ${allCandidates.length} raw candidates from search`);
 
     // Step 1: name normalization / match.
     let candidates = allCandidates.filter((c) => namesMatch(professor.name, c.name));
-    if (candidates.length === 0) return null;
+    console.log(`[semantic-scholar] ${professor.name}: ${candidates.length} after name match`);
+    if (candidates.length === 0) return { papers: null, tier: "not_found" };
 
     // Step 2: affiliation pre-filter, only when many candidates survive the
     // name check — pure cost control, not the confirmation step.
     if (candidates.length > AFFILIATION_PREFILTER_THRESHOLD) {
       const affiliationFiltered = candidates.filter((c) => affiliationMatchesUniversity(c.affiliations, university));
-      if (affiliationFiltered.length === 0) {
-        // Many name-matched candidates, none with a matching affiliation —
-        // likely not in Semantic Scholar under this university.
-        return null;
-      }
+      console.log(`[semantic-scholar] ${professor.name}: ${affiliationFiltered.length} after affiliation prefilter (from ${candidates.length})`);
+      if (affiliationFiltered.length === 0) return { papers: null, tier: "not_found" };
       candidates = affiliationFiltered;
     }
 
     // Step 3: fetch papers for every surviving candidate.
     const keywords = extractKeywords(professor.research_description);
+    console.log(`[semantic-scholar] ${professor.name}: ${candidates.length} candidates going to paper fetch, ${keywords.length} keywords`);
     const withPapers = await Promise.all(
       candidates.map(async (c) => ({ candidate: c, papers: await fetchAuthorPapers(c.authorId) }))
     );
+    withPapers.forEach(({ candidate, papers }) => {
+      console.log(`[semantic-scholar] ${professor.name}: candidate "${candidate.name}" (${candidate.authorId}) has ${papers.length} papers, affiliations: ${JSON.stringify(candidate.affiliations ?? [])}`);
+    });
 
-    // Step 5: compute signals A (affiliation) and B (keyword overlap in titles).
+    // Step 4: compute signals A (affiliation) and B (keyword overlap in titles).
     const signaled = withPapers.map(({ candidate, papers }) => {
       const signalA = affiliationMatchesUniversity(candidate.affiliations, university);
       const signalB = keywords.length > 0 && papers.some((p) => p.title && titleContainsKeyword(p.title, keywords));
       return { candidate, papers, signalA, signalB };
     });
 
-    // Step 6: decision table. A confirmed candidate has signalB true (research
-    // match), regardless of signalA — affiliation data alone never confirms.
-    const confirmed = signaled.filter((s) => s.signalB);
+    const keywordMatches = signaled.filter((s) => s.signalB);
+    const affiliationMatches = signaled.filter((s) => s.signalA);
+    console.log(`[semantic-scholar] ${professor.name}: keywordMatches=${keywordMatches.length}, affiliationMatches=${affiliationMatches.length}`);
 
-    if (confirmed.length !== 1) {
-      // Zero confirmed, or multiple equally-confirmed candidates: too
-      // ambiguous, toss papers.
-      return null;
+    // Confirmed: exactly one candidate whose papers match the description keywords.
+    if (keywordMatches.length === 1) {
+      const papers = topDatedPapers(keywordMatches[0].papers);
+      if (papers.length === 0) return { papers: null, tier: "not_found" };
+      return { papers, tier: "confirmed" };
     }
 
-    // Step 7: top 3 dated papers, most recent first.
-    const dated = confirmed[0].papers
-      .filter((p): p is { title: string; year: number } => !!p.title && p.year != null)
-      .sort((a, b) => b.year - a.year)
-      .slice(0, 3)
-      .map((p) => ({ title: p.title, year: p.year }));
+    // Drifted or neutral: no keyword match, but exactly one candidate confirmed
+    // by affiliation. Drifted when keywords are present (description said one
+    // thing, recent papers show another); neutral when no keywords to compare.
+    if (keywordMatches.length === 0 && affiliationMatches.length === 1) {
+      const papers = topDatedPapers(affiliationMatches[0].papers);
+      if (papers.length === 0) return { papers: null, tier: "not_found" };
+      const tier: PaperTier = keywords.length === 0 ? "neutral" : "drifted";
+      return { papers, tier };
+    }
 
-    if (dated.length === 0) return null;
-    return dated;
+    // Fallback: no signal could pick a unique match, but only one candidate
+    // survived name filtering. With a single candidate there is nothing to
+    // disambiguate between, so accept them rather than returning not_found.
+    // This fires most often when Semantic Scholar omits affiliation data and
+    // the professor's description keywords don't appear verbatim in titles.
+    if (candidates.length === 1) {
+      console.log(`[semantic-scholar] ${professor.name}: single-candidate fallback`);
+      const papers = topDatedPapers(withPapers[0].papers);
+      if (papers.length === 0) return { papers: null, tier: "not_found" };
+      return { papers, tier: "neutral" };
+    }
+
+    console.log(`[semantic-scholar] ${professor.name}: not_found (${candidates.length} candidates, no unique signal)`);
+    return { papers: null, tier: "not_found" };
   } catch (err) {
     console.error(`[semantic-scholar] lookup failed for ${professor.name}:`, err instanceof Error ? err.message : err);
-    return null;
+    return { papers: null, tier: "not_found" };
   }
 }

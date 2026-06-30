@@ -24,10 +24,7 @@ export interface Campaign {
   title: string | null;
   university: string | null;
   research_interest: string | null;
-  position_type: string | null;
-  time_commitment: string | null;
   availability: string | null;
-  location_preference: string | null;
   professor_count: number;
   status: string;
   created_at: string;
@@ -107,6 +104,7 @@ export interface CampaignProfessor {
   reasoning: string | null;
   in_top_n: boolean;
   recent_papers: RecentPaper[] | null;
+  card_description: string | null;
   selected_by_student: boolean;
   created_at: string;
 }
@@ -125,6 +123,7 @@ export interface CampaignProfessorView {
   fit_score: number | null;
   research_areas: string[];
   selected: boolean;
+  recent_papers: RecentPaper[] | null;
   created_at: string;
 }
 

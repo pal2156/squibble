@@ -290,7 +290,6 @@ export default function CampaignPage() {
           }
         >
           Find faculty
-          <ArrowRight className="w-4 h-4" />
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import type { Professor, CampaignProfessorView } from "@/lib/types";
+import type { Professor, CampaignProfessorView, RecentPaper } from "@/lib/types";
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -50,11 +50,12 @@ export async function GET(request: Request) {
       department: page?.department_name ?? null,
       university: page?.university ?? null,
       title: prof.title,
-      description: prof.research_description,
+      description: (row.card_description as string | null) ?? prof.research_description,
       email: prof.email,
       fit_score: row.final_score as number | null,
       research_areas: [],
       selected: row.selected_by_student as boolean,
+      recent_papers: (row.recent_papers as RecentPaper[] | null) ?? null,
       created_at: row.created_at as string,
     };
   });

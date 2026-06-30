@@ -48,15 +48,22 @@ export function buildMimeMessage({
   threadId?: string;
   attachment?: { base64: string; filename: string; mimeType: string };
 }): { raw: string; threadId?: string } {
+  // Normalize all line endings to CRLF so the MIME message is RFC 2822 compliant.
+  // Without this, bare \n in the body causes Gmail to render hard line breaks at each
+  // newline, producing a narrow-column layout instead of full-width paragraphs.
+  const crlfBody = body.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+
   if (!attachment) {
+    const bodyBase64 = Buffer.from(crlfBody).toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
     const lines = [
       `From: ${from}`,
       `To: ${to}`,
       `Subject: ${subject}`,
       "MIME-Version: 1.0",
       "Content-Type: text/plain; charset=utf-8",
+      "Content-Transfer-Encoding: base64",
       "",
-      body,
+      bodyBase64,
     ];
     return {
       raw: toBase64Url(lines.join("\r\n")),
@@ -65,7 +72,7 @@ export function buildMimeMessage({
   }
 
   const boundary = `squibble_${Date.now()}`;
-  const bodyBase64 = Buffer.from(body).toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
+  const bodyBase64 = Buffer.from(crlfBody).toString("base64").match(/.{1,76}/g)?.join("\r\n") ?? "";
   const attachBase64 = attachment.base64.match(/.{1,76}/g)?.join("\r\n") ?? attachment.base64;
 
   const lines = [

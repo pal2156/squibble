@@ -11,13 +11,6 @@ function splitName(fullName: string): { first: string; last: string } {
   return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
 }
 
-function parseAvailability(raw: string | null): { start: string; end: string } {
-  if (!raw) return { start: "", end: "" };
-  const match = raw.match(/^(.*?)\s+(?:to|through|until|-|–|—)\s+(.*)$/i);
-  if (match) return { start: match[1].trim(), end: match[2].trim() };
-  return { start: raw.trim(), end: "" };
-}
-
 export async function POST(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -134,7 +127,6 @@ export async function POST(request: Request) {
     .join("\n") || "(none provided)";
 
   const hasCv = !!(profile?.cv_text && profile?.cv_filename);
-  const { start: availabilityStart, end: availabilityEnd } = parseAvailability(campaign.availability);
 
   // Hoist everything that is constant across professors so each API call sends the
   // same string objects — required for prompt cache hits.
@@ -145,8 +137,7 @@ export async function POST(request: Request) {
     student_major: profile?.major ?? null,
     student_experiences: studentExperiences,
     has_cv: hasCv,
-    availability_start: availabilityStart,
-    availability_end: availabilityEnd,
+    availability: campaign.availability ?? null,
   };
 
   const systemPrompt = `You are writing a cold outreach email from a student seeking a research position with a professor or researcher. Your job is to write an email that feels warm, human, and concise. It must not sound AI-generated, corporate, or like a template. Every email must feel specific to this professor and this student.
@@ -164,8 +155,7 @@ export async function POST(request: Request) {
 - recent_papers: array of up to 3 objects with title and year, or empty
 - connection_summary: one sentence describing a specific link between the student's background and the professor's research, or null
 - has_cv: true or false
-- availability_start: e.g. "mid-May"
-- availability_end: e.g. "August"
+- availability: free-text availability from the student (e.g. "September through December", "Fall Semester", "Spring 2027", "August", "ASAP", "the first two weeks of August", "October 15 to November 30")
 
 **OUTPUT FORMAT**
 
@@ -199,17 +189,17 @@ If status is unknown, drop it: Seeking Research Opportunity, Looking for a Resea
 
 Vary the pick across emails. Do not always pick the same variant.
 
-**GREETING**
+**EMAIL BODY**
 
-Use professor_role_tag to determine the greeting:
+The body field must start with a greeting line, followed by a blank line, then exactly 4 paragraphs.
+
+**Greeting (first line of body):** Select based on professor_role_tag:
 - professor, assistant_professor, associate_professor, chair, emeritus: Dear Professor [Last Name],
 - postdoc, research_scientist, doctorate: Hi Dr. [Last Name],
 - grad_student: Hi [First Name],
 - visiting_scholar, lecturer, other: Hi Dr. [Last Name],
 
-**EMAIL BODY**
-
-The email is exactly 4 paragraphs. Total word count: 150 to 180 words. Every sentence must earn its place.
+The 4 paragraphs follow the greeting. Total word count for the 4 paragraphs: 150 to 180 words. Every sentence must earn its place.
 
 **PARAGRAPH 1: The Hook**
 
@@ -253,13 +243,24 @@ Banned in P2: "extensive experience," "I am highly motivated," "I am passionate 
 
 1-2 sentences. This is where the student makes their ask. Frame it as an offer, not a demand. Sound flexible and willing, not desperate.
 
+**Timeline phrasing** — Before writing P3, determine which case applies from the raw `availability` field and construct an [availability phrase] accordingly. Never mechanically insert the raw text into a fixed "from X through Y" slot.
+
+- Two distinct months or a date range (e.g. "September through December", "Sept-Dec"): phrase as "from [Month] through [Month]"
+- A semester or named period (e.g. "Fall Semester", "Fall Semester (September through December)", "Spring 2027"): phrase as "during the [Semester Name]". Omit the underlying month range if the semester name already implies it; include it only if the name alone is ambiguous.
+- A single month (e.g. "August"): phrase as "in [Month]"
+- Specific dates or a partial-month range (e.g. "the first two weeks of August", "Aug 1-15"): produce a natural date phrase (e.g. "from the 1st through the 15th of August"), or preserve the student's descriptive phrasing if it reads naturally on its own
+- Open-ended availability (e.g. "ASAP", "immediately", "flexible", "anytime"): drop the from/through construction entirely; phrase as "starting immediately", "at any time", or similar as context demands
+- A specific full date range (e.g. "October 15 to November 30"): phrase as "from October 15th through November 30th"
+
+If availability is null or missing, omit the timeline sentence entirely.
+
 If lab is explicitly mentioned in research_description:
-- If your group has any space, I'd love to help, even with smaller tasks like [task 1] or [task 2], and I'm fully committed to learning what's needed. I'd be available from [availability_start] through [availability_end].
-- I would love to assist you in any way, whether through [task 1] or [task 2]. I'd be available from [availability_start] through [availability_end] and very willing to learn what's needed to contribute effectively.
+- If your group has any space, I'd love to help, even with smaller tasks like [task 1] or [task 2], and I'm fully committed to learning what's needed. I'd be available [availability phrase].
+- I would love to assist you in any way, whether through [task 1] or [task 2]. I'd be available [availability phrase] and very willing to learn what's needed to contribute effectively.
 
 If no explicit lab mention:
-- I'd be happy to contribute in any way, whether that's [task 1] or [task 2]. I'm available from [availability_start] through [availability_end].
-- I would love to assist you in any way, whether through [task 1] or [task 2], and I'd be available from [availability_start] through [availability_end].
+- I'd be happy to contribute in any way, whether that's [task 1] or [task 2]. I'm available [availability phrase].
+- I would love to assist you in any way, whether through [task 1] or [task 2], and I'd be available [availability phrase].
 
 Rules for tasks: Draw [task 1] and [task 2] from the professor's actual research description and the student's skills. Never use generic placeholder tasks. Never use the exact same tasks for every professor.
 
@@ -267,7 +268,7 @@ Approved openers: "I'd love to," "I would love to," "I'd be happy to"
 
 Banned openers: "I'd be glad to," "I'm very open to," "I'd be delighted to," "whatever capacity"
 
-Always include the timeline in every P3.
+Always include the timeline in P3 unless availability is null or missing.
 
 **PARAGRAPH 4: The Close**
 
@@ -367,9 +368,16 @@ Structure rules:
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
       const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
-      const modelBody = typeof parsed.body === "string" ? parsed.body.trim() : "";
+      const rawBody = typeof parsed.body === "string" ? parsed.body.trim() : "";
 
-      if (!subject || !modelBody) throw new Error("Invalid response shape from Claude");
+      if (!subject || !rawBody) throw new Error("Invalid response shape from Claude");
+
+      // Remove hard line wraps Claude may insert within paragraphs when formatting JSON.
+      // Paragraphs are separated by \n\n; single \n within a paragraph are hard wraps.
+      const modelBody = rawBody
+        .split(/\n{2,}/)
+        .map((para: string) => para.replace(/\n/g, " ").trim())
+        .join("\n\n");
 
       const signOff = SIGN_OFFS[Math.floor(Math.random() * SIGN_OFFS.length)];
       const body = `${modelBody}\n\n${signOff},\n${profile?.name ?? ""}`.trim();

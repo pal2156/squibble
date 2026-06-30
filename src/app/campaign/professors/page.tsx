@@ -127,6 +127,23 @@ function ProfessorCard({
             </p>
           )}
 
+          <div className="mb-3 pt-2.5 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: "var(--ink-muted)" }}>
+              Recent Papers
+            </p>
+            {professor.recent_papers && professor.recent_papers.length > 0 ? (
+              <ul className="space-y-1">
+                {professor.recent_papers.map((paper, i) => (
+                  <li key={i} className="text-[11px] leading-relaxed" style={{ color: "var(--ink-secondary)" }}>
+                    {paper.title}{paper.year ? ` (${paper.year})` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-[11px]" style={{ color: "var(--ink-muted)" }}>No recent publications found</p>
+            )}
+          </div>
+
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 flex-wrap">
               {(professor.research_areas ?? []).slice(0, 2).map((area) => (

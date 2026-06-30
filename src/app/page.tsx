@@ -267,7 +267,7 @@ const FAQS = [
   { q: "Will the emails actually sound like me?", a: "Yes. Every email is written using your specific profile, your coursework, your experience, and the professor's actual research. No two emails are the same." },
   { q: "What happens after a professor replies?", a: "Squibble detects the reply instantly via Gmail and classifies it as positive or negative. You see it in your dashboard and can reply directly." },
   { q: "Is my Gmail data private?", a: "Squibble only reads replies from professors you contacted through the platform. We never access any other emails in your inbox." },
-  { q: "Can I use this for paid internships or just unpaid research?", a: "Both. You choose the position type when setting up each campaign." },
+  { q: "Can I use this for paid internships or just unpaid research?", a: "Both. Squibble works for any type of research position, paid or unpaid." },
 ];
 
 function FAQ() {
