@@ -109,7 +109,7 @@ type DiscoveredPage = {
 async function discoverFacultyPages(university: string, researchInterest: string): Promise<DiscoveredPage[]> {
   const res = await anthropic.messages.create({
     model: SONNET,
-    max_tokens: 1500,
+    max_tokens: 2500,
     tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
     system: URL_DISCOVERY_SYSTEM_PROMPT,
     messages: [
@@ -143,8 +143,11 @@ export async function resolveFacultyPageIds(
     .maybeSingle();
 
   if (cached && isFresh(cached.discovered_at, DISCOVERY_TTL_MS)) {
+    console.log(`[pipeline] url_discovery_cache HIT for "${normUniversity}" / "${normInterest}"`);
     return cached.faculty_page_ids as string[];
   }
+
+  console.log(`[pipeline] url_discovery_cache MISS for "${normUniversity}" / "${normInterest}" (row=${!!cached}, fresh=${cached ? isFresh(cached.discovered_at, DISCOVERY_TTL_MS) : false})`);
 
   const discovered = await discoverFacultyPages(university, researchInterest);
   if (discovered.length === 0) {
@@ -190,43 +193,82 @@ export async function resolveFacultyPageIds(
     const newUrls = new Set(discovered.map((p) => p.url));
     const sameSet = oldUrls.size === newUrls.size && [...oldUrls].every((u) => newUrls.has(u));
 
-    await supabase
+    const { error: updateError } = await supabase
       .from("url_discovery_cache")
       .update({
         faculty_page_ids: sameSet ? cached.faculty_page_ids : facultyPageIds,
         discovered_at: new Date().toISOString(),
       })
       .eq("id", cached.id);
+    if (updateError) {
+      console.error("[pipeline] url_discovery_cache update failed:", updateError.message);
+    }
   } else {
-    await supabase.from("url_discovery_cache").insert({
-      normalized_university: normUniversity,
-      normalized_research_interest: normInterest,
-      faculty_page_ids: facultyPageIds,
-    });
+    // Use upsert so a concurrent request that races past the SELECT above
+    // doesn't cause a silent unique-constraint failure on the INSERT.
+    const { error: upsertError } = await supabase.from("url_discovery_cache").upsert(
+      {
+        normalized_university: normUniversity,
+        normalized_research_interest: normInterest,
+        faculty_page_ids: facultyPageIds,
+        discovered_at: new Date().toISOString(),
+      },
+      { onConflict: "normalized_university,normalized_research_interest" }
+    );
+    if (upsertError) {
+      console.error("[pipeline] url_discovery_cache upsert failed:", upsertError.message);
+    }
   }
 
   return facultyPageIds;
 }
 
 // Phase 1 of Firecrawl extraction: map the listing page, then ask Haiku to
-// filter the flat URL list down to individual profile pages only.
-async function filterToProfileUrls(allUrls: string[], listingPageUrl: string): Promise<string[]> {
-  if (allUrls.length === 0) return [];
+// filter the link list down to individual profile pages only.
+async function filterToProfileUrls(
+  links: Array<{ url: string; text: string }>,
+  listingPageUrl: string,
+): Promise<string[]> {
+  if (links.length === 0) return [];
+
+  const INPUT_CAP = 2000;
+  const OUTPUT_CAP = 150;
+
+  if (links.length > INPUT_CAP) {
+    console.warn(`[pipeline] filterToProfileUrls: input truncated from ${links.length} to ${INPUT_CAP} links (listing page: ${listingPageUrl})`);
+  }
+  const truncated = links.slice(0, INPUT_CAP);
 
   const res = await anthropic.messages.create({
     model: HAIKU,
     max_tokens: 4000,
     system:
-      "You filter a flat list of URLs down to individual-person profile pages only. Return ONLY valid JSON.",
+      "You filter a list of links down to individual-person profile pages only. Return ONLY valid JSON.",
     messages: [
       {
         role: "user",
         content: `This is the faculty listing page being scraped: ${listingPageUrl}
 
-Here is a flat list of every URL found on/around that page:
-${JSON.stringify(allUrls.slice(0, 2000))}
+Here are all links found on that page as JSON objects with "url" (the href) and "text" (the visible anchor text):
+${JSON.stringify(truncated)}
 
-Identify which URLs follow an individual-person profile pattern (e.g. "/profile/firstname-lastname/", "/people/jane-doe", "/faculty/john-smith.html"). Discard navigation links, the listing page itself, department or research-group pages, news/publication links, and anything external to the university domain hosting the listing page.
+Use the anchor text as the primary signal when it is present. A link whose text looks like a person's name ("Dr. Jane Doe", "John Smith, Associate Professor", "Prof. García") is very likely an individual profile page. Generic text like "Research", "Home", "Faculty", "About", a lab name, or a group name is not.
+
+Identify which links are permanent individual-person profile pages for a specific faculty member, postdoc, or researcher. These pages are typically at paths like "/profile/firstname-lastname/", "/people/jane-doe", "/faculty/john-smith.html", or "/content/john-smith", and they belong to the same university domain (including any subdomain of that university).
+
+When the anchor text is ambiguous or absent, fall back to URL structure: paths with a clear personal-name segment are likely profiles.
+
+Discard:
+- Navigation, header, and footer links
+- The listing page itself or its parent pages
+- Department, lab, or research-group pages (not about a single person)
+- News articles, press releases, blog posts, and event pages (these often contain faculty names in the URL but are not permanent profile pages)
+- Course, syllabus, or teaching pages
+- Publication, paper, or preprint links
+- Award or grant announcement pages
+- Links to external sites outside the university (arxiv.org, journals, personal sites, etc.)
+
+Return at most ${OUTPUT_CAP} URLs. If more than ${OUTPUT_CAP} candidates pass all the filters, return the ${OUTPUT_CAP} that most clearly and unambiguously match a permanent individual-person profile page.
 
 Return ONLY JSON: {"profile_urls": ["https://...", "https://..."]}`,
       },
@@ -235,7 +277,15 @@ Return ONLY JSON: {"profile_urls": ["https://...", "https://..."]}`,
 
   const raw = extractText(res.content);
   const parsed = parseClaudeJson<{ profile_urls: string[] }>(raw);
-  return parsed.profile_urls ?? [];
+  const result = (parsed.profile_urls ?? []).slice(0, OUTPUT_CAP);
+
+  if (result.length === 0) {
+    console.error(`[pipeline] filterToProfileUrls: returned 0 profile URLs from ${links.length} input links (sent ${truncated.length} to filter; listing page: ${listingPageUrl})`);
+  } else if (result.length >= OUTPUT_CAP) {
+    console.warn(`[pipeline] filterToProfileUrls: output hit cap of ${OUTPUT_CAP} (input had ${links.length} links, sent ${truncated.length}; large departments may have real profiles dropped)`);
+  }
+
+  return result;
 }
 
 type PostProcessedProfessor = {
@@ -291,10 +341,10 @@ async function scrapeFacultyListingPage(
   listingPageUrl: string
 ): Promise<{ ok: true; professors: PostProcessedProfessor[] } | { ok: false; reason: "error" | "empty" }> {
   const mapResult = await mapFacultyPage(listingPageUrl);
-  console.log(`[pipeline] map ${listingPageUrl}: ok=${mapResult.ok}, urls=${mapResult.ok ? mapResult.urls.length : 0}`);
+  console.log(`[pipeline] map ${listingPageUrl}: ok=${mapResult.ok}, urls=${mapResult.ok ? mapResult.links.length : 0}`);
   if (!mapResult.ok) return { ok: false, reason: mapResult.reason };
 
-  const profileUrls = await filterToProfileUrls(mapResult.urls, listingPageUrl);
+  const profileUrls = await filterToProfileUrls(mapResult.links, listingPageUrl);
   console.log(`[pipeline] filterToProfileUrls: ${profileUrls.length} profile URLs`);
   if (profileUrls.length === 0) return { ok: false, reason: "empty" };
 
@@ -415,6 +465,7 @@ export async function ensureFacultyPageFresh(supabase: SupabaseClient, pageId: s
   if (!page) throw new Error("Faculty page not found");
 
   const isPageFresh = isFresh(page.scraped_at, SCRAPE_TTL_MS);
+  console.log(`[pipeline] faculty_pages scrape cache for pageId=${pageId}: scraped_at=${page.scraped_at ?? "null"}, in_progress=${page.scrape_in_progress}, fresh=${isPageFresh}`);
 
   let shouldScrape = false;
 

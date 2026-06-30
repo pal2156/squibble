@@ -14,20 +14,22 @@ function firecrawlHeaders(): HeadersInit {
 }
 
 export type FirecrawlMapResult =
-  | { ok: true; urls: string[] }
+  | { ok: true; links: Array<{ url: string; text: string }> }
   | { ok: false; reason: "error" | "empty" };
 
 export async function mapFacultyPage(pageUrl: string): Promise<FirecrawlMapResult> {
   try {
-    // Use /scrape with formats:["links"] rather than /map. The /map endpoint
+    // Use /scrape with formats:["markdown"] rather than /map. The /map endpoint
     // reads only static HTML and misses faculty links rendered by JavaScript.
-    // /scrape runs a headless browser so the fully-rendered link list comes back.
+    // /scrape runs a headless browser so the fully-rendered page comes back.
+    // Markdown gives us both the URL and its visible anchor text, which the
+    // flat "links" format does not.
     const res = await fetch(`${FIRECRAWL_BASE_URL}/scrape`, {
       method: "POST",
       headers: firecrawlHeaders(),
       body: JSON.stringify({
         url: pageUrl,
-        formats: ["links"],
+        formats: ["markdown"],
         onlyMainContent: false,
       }),
     });
@@ -38,11 +40,26 @@ export async function mapFacultyPage(pageUrl: string): Promise<FirecrawlMapResul
     }
 
     const json = await res.json();
-    const urls = (json?.data?.links ?? []) as string[];
-    console.log(`[firecrawl] scrape-for-links ${pageUrl}: ${urls.length} links`);
+    const markdown = (json?.data?.markdown ?? "") as string;
 
-    if (urls.length === 0) return { ok: false, reason: "empty" };
-    return { ok: true, urls };
+    // Parse [text](url) from markdown. For duplicate URLs, keep the longest
+    // anchor text since it's usually the most informative (name + title > icon).
+    const linkMap = new Map<string, string>();
+    const linkRegex = /\[([^\]]*)\]\((https?:\/\/[^\s)]+)/g;
+    let match;
+    while ((match = linkRegex.exec(markdown)) !== null) {
+      const url = match[2];
+      const text = match[1].trim();
+      const existing = linkMap.get(url);
+      if (!existing || text.length > existing.length) {
+        linkMap.set(url, text);
+      }
+    }
+    const links = Array.from(linkMap.entries()).map(([url, text]) => ({ url, text }));
+    console.log(`[firecrawl] scrape-for-links ${pageUrl}: ${links.length} links`);
+
+    if (links.length === 0) return { ok: false, reason: "empty" };
+    return { ok: true, links };
   } catch (err) {
     console.error(`[firecrawl] scrape-for-links threw for ${pageUrl}:`, err instanceof Error ? err.message : err);
     return { ok: false, reason: "error" };
@@ -137,7 +154,7 @@ export async function batchScrapeProfiles(profileUrls: string[]): Promise<Scrape
 }
 
 const BATCH_POLL_INTERVAL_MS = 3000;
-const BATCH_POLL_TIMEOUT_MS = 3 * 60 * 1000;
+const BATCH_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
 async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
   const deadline = Date.now() + BATCH_POLL_TIMEOUT_MS;
