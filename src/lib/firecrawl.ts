@@ -1,6 +1,9 @@
 // Thin wrapper around the Firecrawl REST API (no SDK dependency).
 // Phase 1 (map) finds every URL under a faculty listing page; Phase 2
-// (batch_scrape) extracts structured profile data from the individual pages.
+// (batch_scrape) fetches markdown from individual pages and extracts
+// structured profile data via Claude Haiku (cheaper than Firecrawl LLM extraction).
+
+import { anthropic, HAIKU, parseClaudeJson } from "@/lib/anthropic";
 
 const FIRECRAWL_BASE_URL = "https://api.firecrawl.dev/v1";
 
@@ -120,6 +123,54 @@ export type ScrapedProfile = {
   source_url: string; // metadata.sourceURL — the authoritative profile URL
 };
 
+const EXTRACTION_CONCURRENCY = 20;
+const MARKDOWN_CONTENT_LIMIT = 12000;
+
+type RawMarkdownItem = { markdown: string; sourceUrl: string };
+
+async function runExtractionWithConcurrency(
+  items: RawMarkdownItem[],
+  limit: number
+): Promise<ScrapedProfile[]> {
+  const results: (ScrapedProfile | null)[] = new Array(items.length).fill(null);
+  let next = 0;
+
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      const { markdown, sourceUrl } = items[i];
+      if (!markdown.trim()) continue;
+      try {
+        const res = await anthropic.messages.create({
+          model: HAIKU,
+          max_tokens: 800,
+          system: "You extract structured data from faculty profile pages and return only valid JSON.",
+          messages: [
+            {
+              role: "user",
+              content: `${PROFILE_EXTRACTION_PROMPT}\n\nPage URL: ${sourceUrl}\n\nPage content (markdown):\n${markdown.slice(0, MARKDOWN_CONTENT_LIMIT)}`,
+            },
+          ],
+        });
+        const text = (res.content as Array<{ type: string; text?: string }>)
+          .filter((b) => b.type === "text")
+          .map((b) => b.text ?? "")
+          .join("")
+          .trim();
+        const parsed = parseClaudeJson<Omit<ScrapedProfile, "source_url">>(text);
+        if (parsed?.name?.trim()) {
+          results[i] = { ...parsed, source_url: sourceUrl };
+        }
+      } catch (err) {
+        console.error(`[firecrawl] extraction failed for ${sourceUrl}:`, err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results.filter((p): p is ScrapedProfile => p !== null);
+}
+
 export async function batchScrapeProfiles(profileUrls: string[]): Promise<ScrapedProfile[]> {
   if (profileUrls.length === 0) return [];
 
@@ -128,12 +179,8 @@ export async function batchScrapeProfiles(profileUrls: string[]): Promise<Scrape
     headers: firecrawlHeaders(),
     body: JSON.stringify({
       urls: profileUrls,
-      formats: ["json"],
+      formats: ["markdown"],
       onlyMainContent: false,
-      jsonOptions: {
-        prompt: PROFILE_EXTRACTION_PROMPT,
-        schema: PROFILE_EXTRACTION_SCHEMA,
-      },
     }),
   });
 
@@ -149,14 +196,15 @@ export async function batchScrapeProfiles(profileUrls: string[]): Promise<Scrape
     return [];
   }
 
-  const results = await pollBatchScrapeJob(id);
-  return results;
+  const markdownItems = await pollBatchScrapeJob(id);
+  console.log(`[firecrawl] job ${id}: extracting ${markdownItems.length} profiles via Claude Haiku`);
+  return runExtractionWithConcurrency(markdownItems, EXTRACTION_CONCURRENCY);
 }
 
 const BATCH_POLL_INTERVAL_MS = 3000;
 const BATCH_POLL_TIMEOUT_MS = 5 * 60 * 1000;
 
-async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
+async function pollBatchScrapeJob(jobId: string): Promise<RawMarkdownItem[]> {
   const deadline = Date.now() + BATCH_POLL_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
@@ -174,26 +222,14 @@ async function pollBatchScrapeJob(jobId: string): Promise<ScrapedProfile[]> {
 
     if (status === "completed") {
       const data = (json?.data ?? []) as Array<Record<string, unknown>>;
-      console.log(`[firecrawl] job ${jobId} completed: ${data.length} items; keys in first item: ${JSON.stringify(Object.keys(data[0] ?? {}))}`);
+      console.log(`[firecrawl] job ${jobId} completed: ${data.length} items`);
 
       return data
-        .map((item) => {
-          // Firecrawl returns LLM-extracted data in item.json
-          const j = (item.json ?? item.extract) as Record<string, unknown> | undefined;
-          if (!j) return null;
-          return {
-            name: (j.name as string) ?? "",
-            title: (j.title as string) ?? "",
-            role_tag: (j.role_tag as string) ?? "other",
-            email: (j.email as string | null) ?? null,
-            research_description: (j.research_description as string | null) ?? null,
-            education: (j.education as string | null) ?? null,
-            profile_url: (j.profile_url as string | null) ?? null,
-            other: (j.other as string | null) ?? null,
-            source_url: (item.metadata as { sourceURL?: string } | undefined)?.sourceURL ?? (j.profile_url as string) ?? "",
-          };
-        })
-        .filter((p): p is NonNullable<typeof p> => p !== null && p.name.trim().length > 0);
+        .map((item) => ({
+          markdown: ((item.markdown ?? "") as string).trim(),
+          sourceUrl: (item.metadata as { sourceURL?: string } | undefined)?.sourceURL ?? "",
+        }))
+        .filter((item) => item.markdown.length > 0);
     }
 
     if (status === "failed" || status === "cancelled") {
