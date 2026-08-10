@@ -1,8 +1,9 @@
-// Shared TypeScript interfaces for Supabase DB rows
+// Shared TypeScript interfaces for local SQLite DB rows.
+// Single-user app — no user_id anywhere, there is exactly one of everything
+// user-scoped (one profiles row, id=1).
 
 export interface Profile {
-  id: string;
-  user_id: string;
+  id: number;
   name: string | null;
   school: string | null;
   year: string | null;
@@ -20,12 +21,12 @@ export interface Profile {
 
 export interface Campaign {
   id: string;
-  user_id: string;
   title: string | null;
-  university: string | null;
-  research_interest: string | null;
+  university: string;
+  research_interest: string;
   availability: string | null;
   professor_count: number;
+  faculty_page_url: string | null;
   status: string;
   created_at: string;
 }
@@ -127,11 +128,10 @@ export interface CampaignProfessorView {
   created_at: string;
 }
 
-export type EmailStatus = "draft" | "sent" | "positive" | "negative" | "no_response" | "bounced";
+export type EmailStatus = "draft" | "sent" | "positive" | "negative" | "no_response" | "bounced" | "failed";
 
 export interface Email {
   id: string;
-  user_id: string;
   campaign_id: string | null;
   professor_id: string | null;
   professor_name: string | null;
@@ -141,8 +141,7 @@ export interface Email {
   subject: string | null;
   body: string | null;
   status: EmailStatus;
-  gmail_message_id: string | null;
-  gmail_thread_id: string | null;
+  message_id: string | null;
   sent_at: string | null;
   created_at: string;
 }
@@ -153,21 +152,6 @@ export interface Reply {
   body: string | null;
   classification: "positive" | "negative" | null;
   received_at: string;
-}
-
-export interface GmailWatch {
-  user_id: string;
-  history_id: string | null;
-  expiration: number | null;
-  updated_at: string;
-}
-
-export interface Bounce {
-  id: string;
-  email_id: string;
-  bounced_at: string;
-  credit_refunded: boolean;
-  refunded_at: string | null;
 }
 
 // Joined shape used by the dashboard and conversations pages

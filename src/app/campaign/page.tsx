@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
 import { useCampaignDraft } from "@/components/CampaignDraftContext";
 
+const SLIDER_MAX = 20;
 
 const inputStyle = (filled: boolean) => ({
   background: "var(--bg-card)",
@@ -26,48 +26,13 @@ export default function CampaignPage() {
   const router = useRouter();
   const { draft, setDraft, resetDraft } = useCampaignDraft();
   const { university, research, availability, contactCount, rawCount } = draft;
+  const [facultyPageUrl, setFacultyPageUrl] = useState("");
+  const [showManualUrl, setShowManualUrl] = useState(false);
   const [loading, setLoading] = useState(false);
   const [progressMessage, setProgressMessage] = useState("Finding the right department...");
   const [error, setError] = useState<string | null>(null);
-  const [sliderMax, setSliderMax] = useState(20);
-  const [scoutingRemaining, setScoutingRemaining] = useState<number | null>(null);
 
-  useEffect(() => {
-    function fetchUsage() {
-      fetch("/api/usage")
-        .then((r) => r.json())
-        .then((d: { searches_remaining: number }) => {
-          const remaining = d.searches_remaining ?? 0;
-          setScoutingRemaining(remaining);
-          const max = Math.min(20, remaining);
-          setSliderMax(max);
-
-          let defaultCount: number;
-          if (remaining === 0) {
-            defaultCount = 0;
-          } else if (remaining <= 20) {
-            defaultCount = Math.ceil(remaining / 2);
-          } else {
-            defaultCount = 10;
-          }
-          setDraft({ contactCount: defaultCount, rawCount: String(defaultCount) });
-        })
-        .catch(() => {});
-    }
-
-    fetchUsage();
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") fetchUsage();
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const noScoutingQuota = scoutingRemaining !== null && scoutingRemaining === 0;
-  const sliderDisabled = scoutingRemaining !== null && scoutingRemaining <= 1;
-  const ready = university.trim() && research.trim() && !noScoutingQuota;
+  const ready = university.trim() && research.trim();
 
   if (loading) {
     return (
@@ -90,7 +55,6 @@ export default function CampaignPage() {
     setProgressMessage("Creating campaign...");
 
     try {
-      // Step 1: Create campaign in Supabase
       const createRes = await fetch("/api/campaign/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -99,6 +63,7 @@ export default function CampaignPage() {
           research_interest: research,
           availability: availability || null,
           professor_count: contactCount,
+          faculty_page_url: facultyPageUrl.trim() || null,
         }),
       });
 
@@ -108,7 +73,6 @@ export default function CampaignPage() {
       const campaignId: string = createData.campaign.id;
       setProgressMessage("Finding the right department...");
 
-      // Step 2: Stream faculty finding via SSE
       const res = await fetch("/api/campaign/find-faculty", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,15 +101,9 @@ export default function CampaignPage() {
             if (event.type === "error") throw new Error(event.message);
             if (event.type === "done") {
               try {
-                const [profRes, usageRes] = await Promise.all([
-                  fetch(`/api/professors?campaignId=${campaignId}`),
-                  fetch("/api/usage"),
-                ]);
-                const [profData, usageData] = await Promise.all([profRes.json(), usageRes.json()]);
-                sessionStorage.setItem(
-                  `squibble_profs_${campaignId}`,
-                  JSON.stringify({ profData, usageData })
-                );
+                const profRes = await fetch(`/api/professors?campaignId=${campaignId}`);
+                const profData = await profRes.json();
+                sessionStorage.setItem(`squibble_profs_${campaignId}`, JSON.stringify({ profData }));
               } catch {
                 // Prefetch failed; professors page will fetch on its own
               }
@@ -203,6 +161,31 @@ export default function CampaignPage() {
                 </p>
               </div>
             </div>
+
+            {showManualUrl ? (
+              <div className="mt-3">
+                <input
+                  type="text"
+                  value={facultyPageUrl}
+                  onChange={(e) => setFacultyPageUrl(e.target.value)}
+                  placeholder="https://... faculty listing page URL"
+                  className="w-full px-3.5 py-3 rounded-lg text-sm border transition-all duration-150"
+                  style={inputStyle(!!facultyPageUrl)}
+                />
+                <p className="text-xs" style={{ color: "var(--ink-secondary)", marginTop: 6 }}>
+                  Skips automatic discovery and scrapes this page directly — useful if search doesn&apos;t find the
+                  right department, or you already know it.
+                </p>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowManualUrl(true)}
+                className="text-xs mt-3"
+                style={{ color: "var(--accent)", fontWeight: 500 }}
+              >
+                + Paste a faculty listing page URL instead of searching
+              </button>
+            )}
           </div>
 
           {/* Logistics */}
@@ -223,7 +206,7 @@ export default function CampaignPage() {
         </div>
 
         {/* Researcher count */}
-        <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)", opacity: scoutingRemaining === null ? 0 : 1 }}>
+        <div className="rounded-xl p-5 mb-6" style={{ background: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-medium" style={{ color: "var(--ink)" }}>
               How many researchers would you like us to find?
@@ -235,7 +218,7 @@ export default function CampaignPage() {
               onChange={(e) => setDraft({ rawCount: e.target.value })}
               onBlur={() => {
                 const n = parseInt(rawCount, 10);
-                const clamped = isNaN(n) || n < 1 ? 1 : n > sliderMax ? sliderMax : n;
+                const clamped = isNaN(n) || n < 1 ? 1 : n > SLIDER_MAX ? SLIDER_MAX : n;
                 setDraft({ contactCount: clamped, rawCount: String(clamped) });
               }}
               className="text-3xl font-bold text-center w-14 rounded-lg bg-transparent border-0 focus:outline-none cursor-pointer"
@@ -245,34 +228,15 @@ export default function CampaignPage() {
           <input
             type="range"
             min={1}
-            max={sliderMax > 0 ? sliderMax : 1}
+            max={SLIDER_MAX}
             value={contactCount}
-            disabled={sliderDisabled}
             onChange={(e) => {
               const n = Number(e.target.value);
               setDraft({ contactCount: n, rawCount: String(n) });
             }}
             className="w-full"
-            style={{
-              accentColor: "var(--accent)",
-              cursor: sliderDisabled ? "not-allowed" : "pointer",
-              opacity: sliderDisabled ? 0.4 : 1,
-            }}
+            style={{ accentColor: "var(--accent)", cursor: "pointer" }}
           />
-          <div className="flex items-center justify-between mt-3">
-            <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
-              {scoutingRemaining === null
-                ? " "
-                : scoutingRemaining === 0
-                ? "0 searches remaining."
-                : `${scoutingRemaining} search${scoutingRemaining === 1 ? "" : "es"} remaining.`}
-            </p>
-            {scoutingRemaining === 0 && (
-              <p className="text-xs" style={{ color: "var(--ink-secondary)" }}>
-                Buy more to continue.
-              </p>
-            )}
-          </div>
         </div>
 
         {error && (
@@ -281,18 +245,13 @@ export default function CampaignPage() {
 
         <button
           onClick={handleFindFaculty}
-          disabled={!ready || loading || noScoutingQuota}
+          disabled={!ready || loading}
           className="w-full flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          style={
-            ready && !loading && !noScoutingQuota
-              ? { background: "#678E8D", color: "#FFFFFF" }
-              : { background: "#BBD2DD", color: "#FFFFFF" }
-          }
+          style={ready && !loading ? { background: "#678E8D", color: "#FFFFFF" } : { background: "#BBD2DD", color: "#FFFFFF" }}
         >
           Find faculty
         </button>
       </div>
-
     </div>
   );
 }

@@ -26,13 +26,11 @@ function ProfessorCard({
   selected,
   onToggle,
   rank,
-  disabled,
 }: {
   professor: Professor;
   selected: boolean;
   onToggle: () => void;
   rank: number;
-  disabled: boolean;
 }) {
   const displayScore = professor.fit_score != null ? toDisplayScore(professor.fit_score) : null;
   const scoreStyle = fitScoreStyle(displayScore);
@@ -45,7 +43,7 @@ function ProfessorCard({
 
   return (
     <button
-      onClick={disabled ? undefined : onToggle}
+      onClick={onToggle}
       className="w-full text-left rounded-xl border p-4 transition-all duration-150 group relative"
       style={{
         background: selected ? "rgba(103,142,141,0.1)" : "var(--bg-card)",
@@ -53,8 +51,7 @@ function ProfessorCard({
         boxShadow: selected
           ? "0 0 0 1px rgba(103,142,141,0.25), 0 1px 3px rgba(0,0,0,0.06)"
           : "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.5 : 1,
+        cursor: "pointer",
       }}
     >
       <div className="absolute top-4 left-4 text-[11px] font-bold tabular-nums" style={{ color: "var(--ink-muted)" }}>
@@ -180,7 +177,6 @@ function ProfessorsContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [emailsRemaining, setEmailsRemaining] = useState<number | null>(null);
 
   useEffect(() => {
     if (!campaignId) {
@@ -194,14 +190,12 @@ function ProfessorsContent() {
     if (cached) {
       sessionStorage.removeItem(prefetchKey);
       try {
-        const { profData, usageData } = JSON.parse(cached) as {
+        const { profData } = JSON.parse(cached) as {
           profData: { professors?: Professor[]; campaign?: { title?: string }; error?: string };
-          usageData: { emails_remaining?: number };
         };
         if (profData.error) throw new Error(profData.error);
         setProfessors(profData.professors ?? []);
         setCampaignTitle(profData.campaign?.title ?? "");
-        setEmailsRemaining(usageData.emails_remaining ?? 0);
         setLoading(false);
         return;
       } catch {
@@ -209,35 +203,24 @@ function ProfessorsContent() {
       }
     }
 
-    Promise.all([
-      fetch(`/api/professors?campaignId=${campaignId}`).then((r) => r.json()),
-      fetch("/api/usage").then((r) => r.json()),
-    ])
-      .then(([profData, usageData]) => {
+    fetch(`/api/professors?campaignId=${campaignId}`)
+      .then((r) => r.json())
+      .then((profData) => {
         if (profData.error) throw new Error(profData.error);
         setProfessors(profData.professors ?? []);
         setCampaignTitle(profData.campaign?.title ?? "");
-        setEmailsRemaining(usageData.emails_remaining ?? 0);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [campaignId]);
 
   const toggle = (id: string) => {
-    const isSelected = selected.has(id);
-    if (!isSelected && emailsRemaining !== null && emailsRemaining <= 0) return;
-
     setSelected((prev) => {
       const next = new Set(prev);
-      if (isSelected) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
-
-    setEmailsRemaining((r) => (r !== null ? r + (isSelected ? 1 : -1) : r));
   };
 
   const handleDraftEmails = async () => {
@@ -338,7 +321,6 @@ function ProfessorsContent() {
             selected={selected.has(prof.id)}
             onToggle={() => toggle(prof.id)}
             rank={i + 1}
-            disabled={emailsRemaining === 0 && !selected.has(prof.id)}
           />
         ))}
       </div>
@@ -352,14 +334,6 @@ function ProfessorsContent() {
             <p className="text-xs font-medium" style={{ color: "var(--ink)" }}>
               {selected.size === 0 ? "Select professors to continue" : `${selected.size} selected`}
             </p>
-            {emailsRemaining !== null && (
-              <div className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
-                <span>{emailsRemaining} emails remaining</span>
-                {emailsRemaining === 0 && (
-                  <span className="block">Buy more to continue</span>
-                )}
-              </div>
-            )}
           </div>
           <button
             onClick={handleDraftEmails}

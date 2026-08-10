@@ -3,9 +3,11 @@
 // Semantic Scholar lookups (never cached) live outside this file, in the
 // find-faculty route itself.
 
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { anthropic, parseClaudeJson, SONNET, HAIKU } from "@/lib/anthropic";
-import { mapFacultyPage, batchScrapeProfiles, type ScrapedProfile } from "@/lib/firecrawl";
+import { z } from "zod";
+import { generateJson } from "@/lib/ai";
+import { webSearch } from "@/lib/ai/search";
+import { mapFacultyPage, batchScrapeProfiles, type ScrapedProfile } from "@/lib/scraper";
+import * as db from "@/lib/db";
 import type { Professor, ProfessorRoleTag } from "@/lib/types";
 
 const DISCOVERY_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 3 months
@@ -23,131 +25,134 @@ export function normalize(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
-function extractText(content: unknown): string {
-  const blocks = content as Array<{ type: string; text?: string }>;
-  return blocks.filter((b) => b.type === "text").map((b) => b.text ?? "").join("").trim();
-}
-
 function isFresh(timestamp: string | null, ttlMs: number): boolean {
   if (!timestamp) return false;
   return Date.now() - new Date(timestamp).getTime() < ttlMs;
 }
 
-const URL_DISCOVERY_SYSTEM_PROMPT = `You are finding the best faculty listing page or pages at a given university for a student's stated research interest. Your output will be fed directly into a scraping pipeline, so the URLs you return must be real, publicly accessible, and confirmed to list individual people by name.
+// Provider-neutral faculty-page discovery. The old implementation let Claude
+// run its own web_search tool calls in an agentic loop — Anthropic-only,
+// which broke the pluggable-provider premise for a core feature (design
+// review finding A1 / task T3). Now every provider gets the same primitive:
+// we run the searches ourselves (lib/ai/search.ts, keyless DuckDuckGo) and
+// ask the configured model to pick the right page(s) from the results in one
+// shot. The model may only choose a URL that actually appears in the
+// results — it can no longer browse to verify a guess.
+const DISCOVERY_SYSTEM_PROMPT = `You are finding the best faculty listing page or pages at a given university for a student's stated research interest, using web search results gathered for you below. Your output feeds directly into a scraping pipeline, so the URL(s) you return must come verbatim from the provided search results and must plausibly list individual people by name.
 
-Work through three stages in order.
+Work through this in order.
 
 **Stage 1: Map the interest to the university's academic structure**
 
-Given the university and research interest, reason about which department or departments at this specific university house researchers in this field. Be university-specific, not field-generic. The same interest can sit in different departments depending on the institution. "Computational neuroscience" at Columbia may live in Neuroscience and CS. At Caltech it may live in a dedicated computation and neural systems program. Use what you know about how this specific university organizes its research.
+Given the university and research interest, reason about which department or departments at this specific university house researchers in this field. Be university-specific, not field-generic. Determine whether the interest maps to one department or genuinely spans two — default to one unless you have a clear reason for two.
 
-Then determine whether the interest maps to one department or genuinely spans two. An interest is cross-departmental only when researchers doing this work structurally live across two different departments, not just because it's a broad field. "Condensed matter physics" is not cross-departmental even though it's large. "Biophysics" may be, if the university splits it across physics and biology. Default to one department unless you have a clear reason for two.
+If the interest is very broad ("physics", "biology"), the main department faculty page is the right answer.
 
-If the interest is very broad ("physics", "biology"), the main department faculty page is the right answer from the start. Do not look for sub-groups for a broad interest.
-
-**Stage 2: Find the right page within each department**
-
-For each department, find the deepest-level faculty listing page that still lists individual people by name. A research sub-group or research area page listing affiliated faculty is better than the full department faculty page when one exists. A condensed matter group page is more useful than the full physics faculty page for a condensed matter interest.
+**Stage 2: Pick the right page from the search results**
 
 A valid target page:
-- Lists individual people by name, with titles or roles visible
-- Lives on the university's own domain
-- Is publicly accessible without login or authentication
+- Its search snippet suggests it lists individual people by name, with titles or roles visible
+- Lives on the university's own domain (including subdomains)
+- Is publicly accessible
 
-Do not return:
-- Department homepages with only navigation links and no people list
-- Research topic or area description pages that describe the field but do not list people
-- Individual professor or lab pages
-- External sites, publication databases, or university news pages
+Reject candidates whose snippet suggests: a department homepage with only navigation links, a research topic/area description page with no people list, an individual professor's own page, or anything off the university's domain.
 
-To find each page, run a web search. Use queries like:
-- [university] [sub-field] faculty
-- [university] [sub-field] research group people
-- [university] [department] faculty directory
-
-Read the search result snippets carefully. If a snippet shows names and titles, that is sufficient confirmation that the page lists people. Do not fetch the page unless the snippet is ambiguous (e.g., the result looks like a homepage or a topic description with no names visible).
-
-If the first search does not return a clear result, run a second search with a slightly broader or differently phrased query before moving to the fallback.
-
-**Stage 3: Apply the fallback hierarchy if needed**
-
-If no sub-group page exists for the specific interest, broaden one level: look for a sub-field or research area section within the parent department that lists people. If that does not exist either, fall back to the main department faculty listing page.
-
-You must always return at least one URL. Never return zero results.
-
-The hierarchy in order:
-1. Research sub-group or research area page listing affiliated faculty (preferred)
+Prefer, in order:
+1. A research sub-group or research-area page listing affiliated faculty
 2. A sub-field division within the parent department that lists people
-3. Main department faculty listing page (always the safety net, always exists)
+3. The main department faculty listing page (the safety net — always acceptable)
 
-If you fall back to the parent department page, that is not a failure. It is the correct behavior. Do not note or flag this in your output.
+**Stage 3: Output**
 
-**Output**
+You must always return at least one URL, chosen from the search results provided. Never invent a URL that isn't in the results. If nothing looks like a great match, pick the closest thing to a department faculty listing page from what's there.
 
 Return only a JSON object in this exact format, with no surrounding text:
-\`\`\`json
 {
   "pages": [
     {
-      "url": "https://...",
-      "department": "Full department name as it appears on the university site",
+      "url": "https://... (must appear verbatim in the provided search results)",
+      "department": "Full department name as it appears in the result title/snippet",
       "level": "subgroup | subfield | department",
-      "justification": "One sentence explaining why this page is the right one for this interest at this university."
+      "justification": "One sentence explaining why this page is the right one."
     }
   ]
 }
-\`\`\`
-One object in the array is the default. Two objects only when the interest is genuinely cross-departmental and you have confirmed both pages list individual people. Never return two pages just because two results came back from a search.`;
+One object is the default. Two only when the interest is genuinely cross-departmental and both pages clearly list individual people.`;
 
-type DiscoveredPage = {
-  url: string;
-  department: string;
-  level: "subgroup" | "subfield" | "department";
-  justification: string;
-};
+const DiscoveredPagesSchema = z.object({
+  pages: z.array(z.object({
+    url: z.string(),
+    department: z.string(),
+    level: z.enum(["subgroup", "subfield", "department"]),
+    justification: z.string(),
+  })),
+});
+type DiscoveredPage = z.infer<typeof DiscoveredPagesSchema>["pages"][number];
 
 async function discoverFacultyPages(university: string, researchInterest: string): Promise<DiscoveredPage[]> {
-  const res = await anthropic.messages.create({
-    model: SONNET,
-    max_tokens: 2500,
-    tools: [{ type: "web_search_20250305" as const, name: "web_search" }],
-    system: URL_DISCOVERY_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `University: ${university}\nResearch interest: ${researchInterest}`,
-      },
-    ],
+  const queries = [
+    `${university} ${researchInterest} faculty`,
+    `${university} ${researchInterest} research group people`,
+    `${university} ${researchInterest} department faculty directory`,
+  ];
+  const resultSets = await Promise.all(queries.map((q) => webSearch(q, 6)));
+  const seen = new Set<string>();
+  const allResults = resultSets.flat().filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)));
+
+  if (allResults.length === 0) {
+    throw new Error(
+      "Web search returned no results for this university and research area. Try a broader research interest, or paste a faculty listing page URL directly in the campaign form."
+    );
+  }
+
+  const parsed = await generateJson({
+    schema: DiscoveredPagesSchema,
+    system: DISCOVERY_SYSTEM_PROMPT,
+    prompt: `University: ${university}\nResearch interest: ${researchInterest}\n\nSearch results:\n${JSON.stringify(allResults, null, 2)}`,
+    tier: "smart",
+    maxOutputTokens: 2000,
   });
 
-  const raw = extractText(res.content);
-  const parsed = parseClaudeJson<{ pages: DiscoveredPage[] }>(raw);
-  return (parsed.pages ?? []).slice(0, 2);
+  // Guard against a hallucinated URL slipping past the schema — only keep
+  // pages the model actually chose from what it was given.
+  const validUrls = new Set(allResults.map((r) => r.url));
+  const validated = parsed.pages.filter((p) => validUrls.has(p.url));
+  return validated.slice(0, 2);
 }
 
-// Resolves (university, research interest) to 1-2 faculty_pages ids, using the
-// 3 month url_discovery_cache. Inserts/updates the cache and faculty_pages as needed.
+// Resolves (university, research interest) to 1-2 faculty_pages ids, using
+// the 3 month url_discovery_cache. A campaign's manual faculty_page_url
+// (set when a user pastes a page directly — the graceful-degradation path
+// for non-Claude providers or when search just doesn't find the right page)
+// always wins and skips discovery entirely.
 export async function resolveFacultyPageIds(
-  supabase: SupabaseClient,
   university: string,
-  researchInterest: string
+  researchInterest: string,
+  manualFacultyPageUrl?: string | null
 ): Promise<string[]> {
+  if (manualFacultyPageUrl) {
+    const existing = db.getFacultyPageByUrl(manualFacultyPageUrl);
+    if (existing) return [existing.id];
+    const created = db.insertFacultyPage({
+      university,
+      normalized_university: normalize(university),
+      department_name: null,
+      page_url: manualFacultyPageUrl,
+      level: "department",
+    });
+    return [created.id];
+  }
+
   const normUniversity = normalize(university);
   const normInterest = normalize(researchInterest);
 
-  const { data: cached } = await supabase
-    .from("url_discovery_cache")
-    .select("*")
-    .eq("normalized_university", normUniversity)
-    .eq("normalized_research_interest", normInterest)
-    .maybeSingle();
-
+  const cached = db.getUrlDiscoveryCache(normUniversity, normInterest);
   if (cached && isFresh(cached.discovered_at, DISCOVERY_TTL_MS)) {
     console.log(`[pipeline] url_discovery_cache HIT for "${normUniversity}" / "${normInterest}"`);
-    return cached.faculty_page_ids as string[];
+    return cached.faculty_page_ids;
   }
 
-  console.log(`[pipeline] url_discovery_cache MISS for "${normUniversity}" / "${normInterest}" (row=${!!cached}, fresh=${cached ? isFresh(cached.discovered_at, DISCOVERY_TTL_MS) : false})`);
+  console.log(`[pipeline] url_discovery_cache MISS for "${normUniversity}" / "${normInterest}"`);
 
   const discovered = await discoverFacultyPages(university, researchInterest);
   if (discovered.length === 0) {
@@ -156,75 +161,29 @@ export async function resolveFacultyPageIds(
 
   const facultyPageIds: string[] = [];
   for (const page of discovered) {
-    const { data: existingPage } = await supabase
-      .from("faculty_pages")
-      .select("id")
-      .eq("page_url", page.url)
-      .maybeSingle();
-
+    const existingPage = db.getFacultyPageByUrl(page.url);
     if (existingPage) {
       facultyPageIds.push(existingPage.id);
       continue;
     }
-
-    const { data: inserted, error } = await supabase
-      .from("faculty_pages")
-      .insert({
-        university,
-        normalized_university: normUniversity,
-        department_name: page.department,
-        page_url: page.url,
-        level: page.level,
-      })
-      .select("id")
-      .single();
-
-    if (error || !inserted) throw new Error(`Failed to create faculty page row: ${error?.message ?? "unknown error"}`);
+    const inserted = db.insertFacultyPage({
+      university,
+      normalized_university: normUniversity,
+      department_name: page.department,
+      page_url: page.url,
+      level: page.level,
+    });
     facultyPageIds.push(inserted.id);
   }
 
-  if (cached) {
-    // Stale hit: same URL set means nothing changed, just refresh the timestamp.
-    const { data: existingPages } = await supabase
-      .from("faculty_pages")
-      .select("id, page_url")
-      .in("id", cached.faculty_page_ids as string[]);
-    const oldUrls = new Set((existingPages ?? []).map((p) => p.page_url));
-    const newUrls = new Set(discovered.map((p) => p.url));
-    const sameSet = oldUrls.size === newUrls.size && [...oldUrls].every((u) => newUrls.has(u));
-
-    const { error: updateError } = await supabase
-      .from("url_discovery_cache")
-      .update({
-        faculty_page_ids: sameSet ? cached.faculty_page_ids : facultyPageIds,
-        discovered_at: new Date().toISOString(),
-      })
-      .eq("id", cached.id);
-    if (updateError) {
-      console.error("[pipeline] url_discovery_cache update failed:", updateError.message);
-    }
-  } else {
-    // Use upsert so a concurrent request that races past the SELECT above
-    // doesn't cause a silent unique-constraint failure on the INSERT.
-    const { error: upsertError } = await supabase.from("url_discovery_cache").upsert(
-      {
-        normalized_university: normUniversity,
-        normalized_research_interest: normInterest,
-        faculty_page_ids: facultyPageIds,
-        discovered_at: new Date().toISOString(),
-      },
-      { onConflict: "normalized_university,normalized_research_interest" }
-    );
-    if (upsertError) {
-      console.error("[pipeline] url_discovery_cache upsert failed:", upsertError.message);
-    }
-  }
-
+  db.upsertUrlDiscoveryCache(normUniversity, normInterest, facultyPageIds);
   return facultyPageIds;
 }
 
-// Phase 1 of Firecrawl extraction: map the listing page, then ask Haiku to
-// filter the link list down to individual profile pages only.
+// Phase 1 of scrape extraction: map the listing page, then ask the fast tier
+// to filter the link list down to individual profile pages only.
+const ProfileUrlsSchema = z.object({ profile_urls: z.array(z.string()) });
+
 async function filterToProfileUrls(
   links: Array<{ url: string; text: string }>,
   listingPageUrl: string,
@@ -233,21 +192,15 @@ async function filterToProfileUrls(
 
   const INPUT_CAP = 2000;
   const OUTPUT_CAP = 150;
-
-  if (links.length > INPUT_CAP) {
-    console.warn(`[pipeline] filterToProfileUrls: input truncated from ${links.length} to ${INPUT_CAP} links (listing page: ${listingPageUrl})`);
-  }
   const truncated = links.slice(0, INPUT_CAP);
+  if (links.length > INPUT_CAP) {
+    console.warn(`[pipeline] filterToProfileUrls: input truncated from ${links.length} to ${INPUT_CAP} links (${listingPageUrl})`);
+  }
 
-  const res = await anthropic.messages.create({
-    model: HAIKU,
-    max_tokens: 4000,
-    system:
-      "You filter a list of links down to individual-person profile pages only. Return ONLY valid JSON.",
-    messages: [
-      {
-        role: "user",
-        content: `This is the faculty listing page being scraped: ${listingPageUrl}
+  const parsed = await generateJson({
+    schema: ProfileUrlsSchema,
+    system: "You filter a list of links down to individual-person profile pages only.",
+    prompt: `This is the faculty listing page being scraped: ${listingPageUrl}
 
 Here are all links found on that page as JSON objects with "url" (the href) and "text" (the visible anchor text):
 ${JSON.stringify(truncated)}
@@ -262,29 +215,21 @@ Discard:
 - Navigation, header, and footer links
 - The listing page itself or its parent pages
 - Department, lab, or research-group pages (not about a single person)
-- News articles, press releases, blog posts, and event pages (these often contain faculty names in the URL but are not permanent profile pages)
+- News articles, press releases, blog posts, and event pages
 - Course, syllabus, or teaching pages
 - Publication, paper, or preprint links
 - Award or grant announcement pages
-- Links to external sites outside the university (arxiv.org, journals, personal sites, etc.)
+- Links to external sites outside the university
 
-Return at most ${OUTPUT_CAP} URLs. If more than ${OUTPUT_CAP} candidates pass all the filters, return the ${OUTPUT_CAP} that most clearly and unambiguously match a permanent individual-person profile page.
-
-Return ONLY JSON: {"profile_urls": ["https://...", "https://..."]}`,
-      },
-    ],
+Return at most ${OUTPUT_CAP} URLs. If more than ${OUTPUT_CAP} candidates pass all the filters, return the ${OUTPUT_CAP} that most clearly and unambiguously match a permanent individual-person profile page.`,
+    tier: "fast",
+    maxOutputTokens: 4000,
   });
 
-  const raw = extractText(res.content);
-  const parsed = parseClaudeJson<{ profile_urls: string[] }>(raw);
-  const result = (parsed.profile_urls ?? []).slice(0, OUTPUT_CAP);
-
+  const result = parsed.profile_urls.slice(0, OUTPUT_CAP);
   if (result.length === 0) {
-    console.error(`[pipeline] filterToProfileUrls: returned 0 profile URLs from ${links.length} input links (sent ${truncated.length} to filter; listing page: ${listingPageUrl})`);
-  } else if (result.length >= OUTPUT_CAP) {
-    console.warn(`[pipeline] filterToProfileUrls: output hit cap of ${OUTPUT_CAP} (input had ${links.length} links, sent ${truncated.length}; large departments may have real profiles dropped)`);
+    console.error(`[pipeline] filterToProfileUrls: returned 0 profile URLs from ${links.length} input links (${listingPageUrl})`);
   }
-
   return result;
 }
 
@@ -301,10 +246,8 @@ type PostProcessedProfessor = {
 
 // Discards records with no research_description (can't rank without it), then
 // merges duplicate names found on the same page's scrape into a single record.
-// Email is kept when present but not required — many university pages omit it.
 function postProcessScrapedProfiles(scraped: ScrapedProfile[]): PostProcessedProfessor[] {
   const survivors = scraped.filter((p) => p.research_description);
-
   const byNormalizedName = new Map<string, PostProcessedProfessor>();
 
   for (const p of survivors) {
@@ -326,7 +269,6 @@ function postProcessScrapedProfiles(scraped: ScrapedProfile[]): PostProcessedPro
       continue;
     }
 
-    // Same name appeared twice on this page's scrape: merge, don't drop either.
     existing.research_description = [existing.research_description, p.research_description].filter(Boolean).join("\n\n");
     existing.email = [existing.email, p.email].filter(Boolean).join(",") || null;
     existing.education = [existing.education, p.education].filter(Boolean).join("\n\n") || null;
@@ -349,7 +291,7 @@ async function scrapeFacultyListingPage(
   if (profileUrls.length === 0) return { ok: false, reason: "empty" };
 
   const scraped = await batchScrapeProfiles(profileUrls);
-  console.log(`[pipeline] batchScrapeProfiles: ${scraped.length} scraped, ${scraped.filter(p => p.email).length} with email, ${scraped.filter(p => p.research_description).length} with research_description`);
+  console.log(`[pipeline] batchScrapeProfiles: ${scraped.length} scraped, ${scraped.filter(p => p.email).length} with email`);
   if (scraped.length === 0) return { ok: false, reason: "empty" };
 
   const professors = postProcessScrapedProfiles(scraped);
@@ -359,26 +301,17 @@ async function scrapeFacultyListingPage(
   return { ok: true, professors };
 }
 
-async function upsertProfessorsForPage(
-  supabase: SupabaseClient,
-  pageId: string,
-  extracted: PostProcessedProfessor[]
-): Promise<void> {
+function upsertProfessorsForPage(pageId: string, extracted: PostProcessedProfessor[]): void {
   const normalizedNames = extracted.map((p) => normalize(p.name));
-
-  const { data: globalMatches } = await supabase
-    .from("professors")
-    .select("*")
-    .in("normalized_name", normalizedNames.length > 0 ? normalizedNames : [""]);
-
-  const byNormalizedName = new Map<string, Professor>((globalMatches ?? []).map((p: Professor) => [p.normalized_name, p]));
+  const globalMatches = db.findProfessorsByNormalizedNames(normalizedNames);
+  const byNormalizedName = new Map<string, Professor>(globalMatches.map((p) => [p.normalized_name, p]));
 
   for (const p of extracted) {
     const normalizedName = normalize(p.name);
     const existing = byNormalizedName.get(normalizedName);
 
     if (!existing) {
-      await supabase.from("professors").insert({
+      db.insertProfessor({
         faculty_page_ids: [pageId],
         normalized_name: normalizedName,
         name: p.name,
@@ -395,62 +328,43 @@ async function upsertProfessorsForPage(
     }
 
     const alreadyOnThisPage = existing.faculty_page_ids.includes(pageId);
-
     if (alreadyOnThisPage) {
-      await supabase
-        .from("professors")
-        .update({
-          title: p.title,
-          email: p.email ?? existing.email,
-          research_description: p.research_description,
-          role_tag: p.role_tag,
-          education: p.education,
-          other: p.other,
-          active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
+      db.updateProfessor(existing.id, {
+        title: p.title,
+        email: p.email ?? existing.email,
+        research_description: p.research_description,
+        role_tag: p.role_tag,
+        education: p.education,
+        other: p.other,
+        active: true,
+      });
     } else {
       // Cross-departmental merge: same person found on a second faculty page.
-      await supabase
-        .from("professors")
-        .update({
-          faculty_page_ids: [...existing.faculty_page_ids, pageId],
-          profile_urls: [...existing.profile_urls, ...p.profile_urls],
-          research_description: [existing.research_description, p.research_description].filter(Boolean).join("\n\n") || null,
-          education: [existing.education, p.education].filter(Boolean).join("\n\n") || null,
-          other: [existing.other, p.other].filter(Boolean).join("\n\n") || null,
-          email: [existing.email, p.email].filter(Boolean).join(",") || null,
-          title: existing.title ?? p.title,
-          active: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
+      db.updateProfessor(existing.id, {
+        faculty_page_ids: [...existing.faculty_page_ids, pageId],
+        profile_urls: [...existing.profile_urls, ...p.profile_urls],
+        research_description: [existing.research_description, p.research_description].filter(Boolean).join("\n\n") || null,
+        education: [existing.education, p.education].filter(Boolean).join("\n\n") || null,
+        other: [existing.other, p.other].filter(Boolean).join("\n\n") || null,
+        email: [existing.email, p.email].filter(Boolean).join(",") || null,
+        title: existing.title ?? p.title,
+        active: true,
+      });
     }
   }
 
   // Soft-delete professors who were on this page before but are missing from
   // this scrape's results.
-  const { data: currentlyOnPage } = await supabase
-    .from("professors")
-    .select("id, normalized_name")
-    .contains("faculty_page_ids", [pageId])
-    .eq("active", true);
-
   const stillPresent = new Set(normalizedNames);
-  const missingIds = (currentlyOnPage ?? [])
-    .filter((p) => !stillPresent.has(p.normalized_name))
-    .map((p) => p.id);
-
-  if (missingIds.length > 0) {
-    await supabase.from("professors").update({ active: false }).in("id", missingIds);
-  }
+  const currentlyOnPage = db.getProfessorsOnPage(pageId, true);
+  const missing = currentlyOnPage.filter((p) => !stillPresent.has(p.normalized_name));
+  for (const p of missing) db.updateProfessor(p.id, { active: false });
 }
 
-async function waitForScrapeToFinish(supabase: SupabaseClient, pageId: string): Promise<boolean> {
+async function waitForScrapeToFinish(pageId: string): Promise<boolean> {
   const deadline = Date.now() + SCRAPE_WAIT_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const { data: page } = await supabase.from("faculty_pages").select("scrape_in_progress").eq("id", pageId).single();
+    const page = db.getFacultyPage(pageId);
     if (!page || !page.scrape_in_progress) return true;
     await new Promise((r) => setTimeout(r, SCRAPE_WAIT_POLL_MS));
   }
@@ -460,22 +374,19 @@ async function waitForScrapeToFinish(supabase: SupabaseClient, pageId: string): 
 // Ensures a single faculty page's professor roster is fresh per the 1 month
 // TTL and scrape_in_progress concurrency lock. Always touches
 // last_accessed_at for the page on the way out.
-export async function ensureFacultyPageFresh(supabase: SupabaseClient, pageId: string): Promise<void> {
-  const { data: page } = await supabase.from("faculty_pages").select("*").eq("id", pageId).single();
+export async function ensureFacultyPageFresh(pageId: string): Promise<void> {
+  const page = db.getFacultyPage(pageId);
   if (!page) throw new Error("Faculty page not found");
 
   const isPageFresh = isFresh(page.scraped_at, SCRAPE_TTL_MS);
-  console.log(`[pipeline] faculty_pages scrape cache for pageId=${pageId}: scraped_at=${page.scraped_at ?? "null"}, in_progress=${page.scrape_in_progress}, fresh=${isPageFresh}`);
+  console.log(`[pipeline] scrape cache for pageId=${pageId}: scraped_at=${page.scraped_at ?? "null"}, in_progress=${page.scrape_in_progress}, fresh=${isPageFresh}`);
 
   let shouldScrape = false;
-
   if (!isPageFresh) {
     if (page.scrape_in_progress) {
-      const finished = await waitForScrapeToFinish(supabase, pageId);
+      const finished = await waitForScrapeToFinish(pageId);
       if (!finished) {
-        // Previous function was killed mid-scrape and left the lock stuck.
-        // Break it so this request can take over.
-        await supabase.from("faculty_pages").update({ scrape_in_progress: false }).eq("id", pageId);
+        db.updateFacultyPage(pageId, { scrape_in_progress: false });
         shouldScrape = true;
       }
     } else {
@@ -484,36 +395,24 @@ export async function ensureFacultyPageFresh(supabase: SupabaseClient, pageId: s
   }
 
   if (shouldScrape) {
-    await supabase.from("faculty_pages").update({ scrape_in_progress: true }).eq("id", pageId);
-
+    db.updateFacultyPage(pageId, { scrape_in_progress: true });
     const result = await scrapeFacultyListingPage(page.page_url);
 
     if (!result.ok) {
-      await supabase
-        .from("faculty_pages")
-        .update({ scrape_in_progress: false, last_scrape_status: result.reason })
-        .eq("id", pageId);
+      db.updateFacultyPage(pageId, { scrape_in_progress: false, last_scrape_status: result.reason });
     } else {
-      await upsertProfessorsForPage(supabase, pageId, result.professors);
-      await supabase
-        .from("faculty_pages")
-        .update({
-          scrape_in_progress: false,
-          scraped_at: new Date().toISOString(),
-          last_scrape_status: "ok",
-        })
-        .eq("id", pageId);
+      upsertProfessorsForPage(pageId, result.professors);
+      db.updateFacultyPage(pageId, {
+        scrape_in_progress: false,
+        scraped_at: db.nowIso(),
+        last_scrape_status: "ok",
+      });
     }
   }
 
-  await supabase.from("faculty_pages").update({ last_accessed_at: new Date().toISOString() }).eq("id", pageId);
+  db.updateFacultyPage(pageId, { last_accessed_at: db.nowIso() });
 }
 
-export async function getActiveProfessorsForPages(supabase: SupabaseClient, facultyPageIds: string[]): Promise<Professor[]> {
-  const { data } = await supabase
-    .from("professors")
-    .select("*")
-    .overlaps("faculty_page_ids", facultyPageIds)
-    .eq("active", true);
-  return (data ?? []) as Professor[];
+export function getActiveProfessorsForPages(facultyPageIds: string[]): Professor[] {
+  return db.getActiveProfessorsForPages(facultyPageIds);
 }
