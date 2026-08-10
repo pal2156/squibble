@@ -432,7 +432,7 @@ export default function ProfilePage() {
       extracted = extractionPromise.current ? await extractionPromise.current : null;
 
       if (extracted) {
-        // cv_text and cv_filename were already saved to Supabase by parse-cv — don't resend them
+        // cv_text and cv_filename were already saved by parse-cv — don't resend them
         body = {
           name: extracted.fields.name ?? null,
           school: extracted.fields.school ?? null,

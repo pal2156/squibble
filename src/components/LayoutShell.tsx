@@ -11,8 +11,8 @@ export default function LayoutShell({ children }: { children: React.ReactNode })
   const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
 
-  // Landing, pricing, legal, and about pages render without the shell
-  if (pathname === "/" || pathname === "/pricing" || pathname === "/terms" || pathname === "/privacy" || pathname === "/about") {
+  // The first-run setup wizard renders fullscreen, without the app shell
+  if (pathname === "/setup") {
     return <>{children}</>;
   }
 

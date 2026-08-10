@@ -1,7 +1,5 @@
 "use client";
 
-const DEV_OVERRIDE_RECIPIENT = true;
-
 import { useState, useEffect, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Pencil, SkipForward, Building2, ArrowLeft } from "lucide-react";
@@ -19,7 +17,6 @@ function ApprovalContent() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [states, setStates] = useState<Record<string, EmailState>>({});
   const [bodies, setBodies] = useState<Record<string, string>>({});
-  const [recipients, setRecipients] = useState<Record<string, string>>({});
   const [current, setCurrent] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
@@ -30,7 +27,6 @@ function ApprovalContent() {
   const [draftError, setDraftError] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [emailsRemaining, setEmailsRemaining] = useState<number>(Infinity);
   const [draftWarnings, setDraftWarnings] = useState<string[]>([]);
 
   useEffect(() => {
@@ -57,7 +53,6 @@ function ApprovalContent() {
         setEmails(emailList);
         setStates(Object.fromEntries(emailList.map((e) => [e.id, "pending" as EmailState])));
         setBodies(Object.fromEntries(emailList.map((e) => [e.id, e.body ?? ""])));
-        setRecipients(Object.fromEntries(emailList.map((e) => [e.id, e.email ?? ""])));
 
         const warnings: string[] = [];
         const failed = (data.failed_count as number | null) ?? 0;
@@ -82,15 +77,6 @@ function ApprovalContent() {
     loadDrafts();
     return () => controller.abort();
   }, [campaignId]);
-
-  useEffect(() => {
-    fetch("/api/usage")
-      .then((r) => r.json())
-      .then((d: { emails_remaining: number }) => {
-        setEmailsRemaining(d.emails_remaining ?? Infinity);
-      })
-      .catch(() => {});
-  }, []);
 
   // Animates the current card out, then advances to the next card (or done screen).
   const advanceCard = useCallback((nextIndex: number, isLast: boolean) => {
@@ -172,10 +158,9 @@ function ApprovalContent() {
   const reviewed = Object.values(states).filter((s) => s !== "pending").length;
   const total = emails.length;
   const approvedCount = Object.values(states).filter((s) => s === "approved").length;
-  const atSendLimit = emailsRemaining <= 0;
 
   const handleApprove = async () => {
-    if (!email || cardPhase !== "idle" || sendingId || atSendLimit) return;
+    if (!email || cardPhase !== "idle" || sendingId) return;
     const isLast = current >= emails.length - 1;
     setSendingId(email.id);
     setSendError(null);
@@ -184,10 +169,7 @@ function ApprovalContent() {
       const res = await fetch("/api/emails/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          emailId: email.id,
-          ...(DEV_OVERRIDE_RECIPIENT ? { overrideRecipient: recipients[email.id] } : {}),
-        }),
+        body: JSON.stringify({ emailId: email.id }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -206,7 +188,6 @@ function ApprovalContent() {
       return;
     }
 
-    setEmailsRemaining((prev) => Math.max(0, prev - 1));
     setStates((prev) => ({ ...prev, [email.id]: "approved" }));
     setExitDir("left");
     setCardPhase("sent");
@@ -246,9 +227,7 @@ function ApprovalContent() {
 
   const handleApproveAll = async () => {
     const pending = emails.filter((e) => states[e.id] === "pending");
-    let creditsLeft = emailsRemaining;
     for (const e of pending) {
-      if (creditsLeft <= 0) break;
       try {
         const res = await fetch("/api/emails/send", {
           method: "POST",
@@ -261,8 +240,6 @@ function ApprovalContent() {
         } else {
           console.log("[approveAll] sent", e.id, data);
           setStates((prev) => ({ ...prev, [e.id]: "approved" }));
-          creditsLeft--;
-          setEmailsRemaining((prev) => Math.max(0, prev - 1));
         }
       } catch (err) {
         console.error("[approveAll] network error for", e.id, err);
@@ -448,21 +425,6 @@ function ApprovalContent() {
           </p>
         </div>
 
-        {/* Dev: override recipient */}
-        {DEV_OVERRIDE_RECIPIENT && (
-          <div className="px-6 py-3 border-b flex items-center gap-3" style={{ borderColor: "var(--border-subtle)" }}>
-            <span className="text-[11px] font-semibold uppercase tracking-widest shrink-0 w-14" style={{ color: "var(--ink-muted)" }}>To</span>
-            <input
-              type="email"
-              value={recipients[email.id] ?? ""}
-              onChange={(e) => setRecipients((prev) => ({ ...prev, [email.id]: e.target.value }))}
-              className="flex-1 text-xs bg-transparent border-none outline-none"
-              style={{ color: "var(--ink-secondary)", fontFamily: "inherit" }}
-              placeholder="recipient@example.com"
-            />
-          </div>
-        )}
-
         {/* Body */}
         <div className="px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-widest mb-3" style={{ color: "var(--ink-muted)" }}>
@@ -503,25 +465,15 @@ function ApprovalContent() {
         </div>
       )}
 
-      {/* Send limit banner */}
-      {atSendLimit && cardPhase === "idle" && editing !== email.id && (
-        <div
-          className="mt-4 px-4 py-3 rounded-xl text-xs font-medium text-center"
-          style={{ background: "rgba(103,142,141,0.08)", color: "var(--ink-secondary)", border: "1px solid rgba(103,142,141,0.18)" }}
-        >
-          No email credits remaining. Buy more to send more emails.
-        </div>
-      )}
-
       {/* Actions — shown only when idle and not editing */}
       {cardPhase === "idle" && editing !== email.id && (
         <div className="flex items-center gap-2.5 mt-4 animate-slide-up">
           <button
             onClick={handleApprove}
-            disabled={!!sendingId || atSendLimit}
+            disabled={!!sendingId}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-semibold transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "rgba(103,142,141,0.1)", color: "#678E8D", border: "1px solid rgba(103,142,141,0.2)" }}
-            onMouseEnter={(e) => { if (!sendingId && !atSendLimit) { e.currentTarget.style.background = "rgba(103,142,141,0.18)"; } }}
+            onMouseEnter={(e) => { if (!sendingId) { e.currentTarget.style.background = "rgba(103,142,141,0.18)"; } }}
             onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(103,142,141,0.1)"; }}
           >
             <Check className="w-3.5 h-3.5" strokeWidth={2.5} />

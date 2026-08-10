@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { anthropic, SONNET } from "@/lib/anthropic";
+import { z } from "zod";
+import { generateJson } from "@/lib/ai";
+import * as db from "@/lib/db";
 
 const SIGN_OFFS = ["Best", "Sincerely", "Warm regards", "Best regards", "Thank you"];
 
@@ -11,136 +12,9 @@ function splitName(fullName: string): { first: string; last: string } {
   return { first: parts.slice(0, -1).join(" "), last: parts[parts.length - 1] };
 }
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+const DraftSchema = z.object({ subject: z.string(), body: z.string() });
 
-  const { campaignId } = await request.json();
-  if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
-
-  const [{ data: campaign }, { data: profile }, { data: existingDrafts }] = await Promise.all([
-    supabase.from("campaigns").select("*").eq("id", campaignId).eq("user_id", user.id).single(),
-    supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-    supabase.from("emails").select("*").eq("campaign_id", campaignId).eq("user_id", user.id),
-  ]);
-
-  if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
-
-  const { data: selectedCampaignProfessors } = await supabase
-    .from("campaign_professors")
-    .select("*, professors(*)")
-    .eq("campaign_id", campaignId)
-    .eq("selected_by_student", true);
-
-  const selectedFacultyPageIds = Array.from(
-    new Set((selectedCampaignProfessors ?? []).flatMap((cp) => cp.professors.faculty_page_ids ?? []))
-  );
-  const { data: selectedFacultyPages } = selectedFacultyPageIds.length > 0
-    ? await supabase.from("faculty_pages").select("id, university, department_name").in("id", selectedFacultyPageIds)
-    : { data: [] as Array<{ id: string; university: string; department_name: string | null }> };
-  const facultyPageById = new Map((selectedFacultyPages ?? []).map((p) => [p.id, p]));
-
-  const professors = (selectedCampaignProfessors ?? []).map((cp) => {
-    const prof = cp.professors;
-    const page = facultyPageById.get(prof.faculty_page_ids[0]);
-    return {
-      id: prof.id,
-      name: prof.name,
-      role_tag: prof.role_tag,
-      department: page?.department_name ?? null,
-      university: page?.university ?? campaign.university,
-      title: prof.title,
-      description: prof.research_description,
-      email: prof.email,
-      connection_summary: cp.connection_summary,
-      recent_papers: (cp.recent_papers ?? []).slice(0, 3),
-    };
-  });
-
-  if (!professors || professors.length === 0) {
-    return NextResponse.json({ error: "No professors selected" }, { status: 400 });
-  }
-
-  const draftedProfessorIds = new Set((existingDrafts ?? []).map((d) => d.professor_id));
-  let professorsNeedingDrafts = professors.filter((p) => !draftedProfessorIds.has(p.id));
-
-  // Build a lookup so we can fill in professor emails on any email row that is missing them.
-  const profEmailMap = new Map<string, string | null>(
-    (professors ?? []).map((p) => [p.id as string, (p.email as string | null) ?? null])
-  );
-  const attachEmail = <T extends { professor_id?: string | null; email?: string | null }>(row: T): T =>
-    row.email ? row : { ...row, email: profEmailMap.get(row.professor_id ?? "") ?? null };
-
-  // Cross-campaign duplicate check: skip professors the student has already emailed.
-  let duplicateSkipped: string[] = [];
-  const selectedProfEmails = (professors ?? [])
-    .map(p => p.email as string | null)
-    .filter((e): e is string => !!e);
-
-  if (selectedProfEmails.length > 0) {
-    const { data: prevSent } = await supabase
-      .from("emails")
-      .select("email")
-      .eq("user_id", user.id)
-      .neq("campaign_id", campaignId)
-      .in("status", ["sent", "positive", "negative", "no_response", "bounced"])
-      .in("email", selectedProfEmails);
-
-    const alreadySentTo = new Set(
-      (prevSent ?? []).map(e => ((e.email as string | null) ?? "").toLowerCase()).filter(Boolean)
-    );
-
-    if (alreadySentTo.size > 0) {
-      const duplicateIds = new Set(
-        (professors ?? [])
-          .filter(p => p.email && alreadySentTo.has((p.email as string).toLowerCase()))
-          .map(p => p.id as string)
-      );
-      if (duplicateIds.size > 0) {
-        duplicateSkipped = (professors ?? [])
-          .filter(p => duplicateIds.has(p.id as string))
-          .map(p => p.name as string);
-        professorsNeedingDrafts = professorsNeedingDrafts.filter(
-          p => !duplicateIds.has(p.id as string)
-        );
-      }
-    }
-  }
-
-  if (professorsNeedingDrafts.length === 0) {
-    return NextResponse.json({
-      emails: (existingDrafts ?? []).map(attachEmail),
-      failed_count: 0,
-      duplicate_skipped: duplicateSkipped,
-    });
-  }
-
-  const studentExperiences = [
-    profile?.coursework ? `Coursework: ${profile.coursework}` : null,
-    profile?.experience ? `Experience: ${profile.experience}` : null,
-    profile?.skills ? `Skills: ${profile.skills}` : null,
-    profile?.extracurriculars ? `Extracurriculars: ${profile.extracurriculars}` : null,
-    profile?.anything_else ? `Additional: ${profile.anything_else.slice(0, 800)}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n") || "(none provided)";
-
-  const hasCv = !!(profile?.cv_text && profile?.cv_filename);
-
-  // Hoist everything that is constant across professors so each API call sends the
-  // same string objects — required for prompt cache hits.
-  const studentFields = {
-    student_name: profile?.name ?? null,
-    student_year: profile?.year ?? null,
-    student_university: profile?.school ?? null,
-    student_major: profile?.major ?? null,
-    student_experiences: studentExperiences,
-    has_cv: hasCv,
-    availability: campaign.availability ?? null,
-  };
-
-  const systemPrompt = `You are writing a cold outreach email from a student seeking a research position with a professor or researcher. Your job is to write an email that feels warm, human, and concise. It must not sound AI-generated, corporate, or like a template. Every email must feel specific to this professor and this student.
+const SYSTEM_PROMPT = `You are writing a cold outreach email from a student seeking a research position with a professor or researcher. Your job is to write an email that feels warm, human, and concise. It must not sound AI-generated, corporate, or like a template. Every email must feel specific to this professor and this student.
 
 **INPUTS YOU WILL RECEIVE**
 - student_name: first and last name
@@ -156,16 +30,6 @@ export async function POST(request: Request) {
 - connection_summary: one sentence describing a specific link between the student's background and the professor's research, or null
 - has_cv: true or false
 - availability: free-text availability from the student (e.g. "September through December", "Fall Semester", "Spring 2027", "August", "ASAP", "the first two weeks of August", "October 15 to November 30")
-
-**OUTPUT FORMAT**
-
-Return only a JSON object in this exact format, with no surrounding text:
-\`\`\`json
-{
-  "subject": "...",
-  "body": "..."
-}
-\`\`\`
 
 **SUBJECT LINE**
 
@@ -314,6 +178,91 @@ Structure rules:
 - Vary sentence structures and opening phrases across emails so no two emails read the same.
 - One paper referenced maximum when papers exist. Never zero when papers exist. Never two.`;
 
+export async function POST(request: Request) {
+  const { campaignId } = await request.json();
+  if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
+
+  const campaign = db.getCampaign(campaignId);
+  if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+
+  const profile = db.getProfile();
+  const existingDrafts = db.getEmailsForCampaign(campaignId);
+  const selectedCampaignProfessors = db.getSelectedForCampaign(campaignId);
+
+  const selectedFacultyPageIds = Array.from(new Set(selectedCampaignProfessors.flatMap((cp) => cp.professor.faculty_page_ids)));
+  const facultyPageById = new Map(db.getFacultyPages(selectedFacultyPageIds).map((p) => [p.id, p]));
+
+  const professors = selectedCampaignProfessors.map((cp) => {
+    const prof = cp.professor;
+    const page = facultyPageById.get(prof.faculty_page_ids[0]);
+    return {
+      id: prof.id,
+      name: prof.name,
+      role_tag: prof.role_tag,
+      department: page?.department_name ?? null,
+      university: page?.university ?? campaign.university,
+      title: prof.title,
+      description: prof.research_description,
+      email: prof.email,
+      connection_summary: cp.connection_summary,
+      recent_papers: (cp.recent_papers ?? []).slice(0, 3),
+    };
+  });
+
+  if (professors.length === 0) {
+    return NextResponse.json({ error: "No professors selected" }, { status: 400 });
+  }
+
+  const draftedProfessorIds = new Set(existingDrafts.map((d) => d.professor_id));
+  let professorsNeedingDrafts = professors.filter((p) => !draftedProfessorIds.has(p.id));
+
+  const profEmailMap = new Map(professors.map((p) => [p.id, p.email]));
+  const attachEmail = <T extends { professor_id?: string | null; email?: string | null }>(row: T): T =>
+    row.email ? row : { ...row, email: profEmailMap.get(row.professor_id ?? "") ?? null };
+
+  // Cross-campaign duplicate check: skip professors the student has already emailed.
+  let duplicateSkipped: string[] = [];
+  const selectedProfEmails = professors.map((p) => p.email).filter((e): e is string => !!e);
+
+  if (selectedProfEmails.length > 0) {
+    const alreadySentTo = db.findAlreadyContactedEmails(campaignId, selectedProfEmails);
+    if (alreadySentTo.size > 0) {
+      const duplicateIds = new Set(
+        professors.filter((p) => p.email && alreadySentTo.has(p.email.toLowerCase())).map((p) => p.id)
+      );
+      if (duplicateIds.size > 0) {
+        duplicateSkipped = professors.filter((p) => duplicateIds.has(p.id)).map((p) => p.name);
+        professorsNeedingDrafts = professorsNeedingDrafts.filter((p) => !duplicateIds.has(p.id));
+      }
+    }
+  }
+
+  if (professorsNeedingDrafts.length === 0) {
+    return NextResponse.json({ emails: existingDrafts.map(attachEmail), failed_count: 0, duplicate_skipped: duplicateSkipped });
+  }
+
+  const studentExperiences = [
+    profile?.coursework ? `Coursework: ${profile.coursework}` : null,
+    profile?.experience ? `Experience: ${profile.experience}` : null,
+    profile?.skills ? `Skills: ${profile.skills}` : null,
+    profile?.extracurriculars ? `Extracurriculars: ${profile.extracurriculars}` : null,
+    profile?.anything_else ? `Additional: ${profile.anything_else.slice(0, 800)}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n") || "(none provided)";
+
+  const hasCv = !!(profile?.cv_text && profile?.cv_filename);
+
+  const studentFields = {
+    student_name: profile?.name ?? null,
+    student_year: profile?.year ?? null,
+    student_university: profile?.school ?? null,
+    student_major: profile?.major ?? null,
+    student_experiences: studentExperiences,
+    has_cv: hasCv,
+    availability: campaign.availability ?? null,
+  };
+
   type Prof = (typeof professorsNeedingDrafts)[number];
   const draftForProf = async (prof: Prof) => {
     const profUniversity = prof.university ?? campaign.university ?? "";
@@ -329,50 +278,19 @@ Structure rules:
     };
 
     try {
-      const response = await anthropic.messages.create({
-        model: SONNET,
-        max_tokens: 700,
-        system: [
-          {
-            type: "text",
-            text: systemPrompt,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(studentFields, null, 2),
-                cache_control: { type: "ephemeral" },
-              },
-              {
-                type: "text",
-                text: JSON.stringify(professorFields, null, 2),
-              },
-            ],
-          },
-        ],
+      const draft = await generateJson({
+        schema: DraftSchema,
+        system: SYSTEM_PROMPT,
+        prompt: `Student:\n${JSON.stringify(studentFields, null, 2)}\n\nProfessor:\n${JSON.stringify(professorFields, null, 2)}`,
+        tier: "smart",
+        maxOutputTokens: 700,
       });
 
-      const raw = response.content
-        .filter((b) => b.type === "text")
-        .map((b) => (b as { type: "text"; text: string }).text)
-        .join("")
-        .trim();
+      const subject = draft.subject.trim();
+      const rawBody = draft.body.trim();
+      if (!subject || !rawBody) throw new Error("Invalid response shape from model");
 
-      if (!raw) throw new Error("Empty response from Claude");
-
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
-      const subject = typeof parsed.subject === "string" ? parsed.subject.trim() : "";
-      const rawBody = typeof parsed.body === "string" ? parsed.body.trim() : "";
-
-      if (!subject || !rawBody) throw new Error("Invalid response shape from Claude");
-
-      // Remove hard line wraps Claude may insert within paragraphs when formatting JSON.
+      // Remove hard line wraps the model may insert within paragraphs.
       // Paragraphs are separated by \n\n; single \n within a paragraph are hard wraps.
       const modelBody = rawBody
         .split(/\n{2,}/)
@@ -383,7 +301,6 @@ Structure rules:
       const body = `${modelBody}\n\n${signOff},\n${profile?.name ?? ""}`.trim();
 
       return {
-        user_id: user.id,
         campaign_id: campaignId,
         professor_id: prof.id,
         professor_name: prof.name,
@@ -392,7 +309,7 @@ Structure rules:
         email: prof.email ?? null,
         subject,
         body,
-        status: "draft",
+        status: "draft" as const,
       };
     } catch (err) {
       console.error(`Email draft failed for ${prof.name}:`, err instanceof Error ? err.message : err);
@@ -400,19 +317,7 @@ Structure rules:
     }
   };
 
-  // For 3+ professors, await the first email before firing the rest in parallel.
-  // The first call writes the prompt cache; calls 2+ read the cached system prompt
-  // and student context at 10% of input cost instead of paying full price for each.
-  // For 1-2 professors keep all parallel to avoid adding latency for minimal savings.
-  let results: Awaited<ReturnType<typeof draftForProf>>[];
-  if (professorsNeedingDrafts.length >= 3) {
-    const [first, ...rest] = professorsNeedingDrafts;
-    const firstResult = await draftForProf(first);
-    const restResults = await Promise.all(rest.map(draftForProf));
-    results = [firstResult, ...restResults];
-  } else {
-    results = await Promise.all(professorsNeedingDrafts.map(draftForProf));
-  }
+  const results = await Promise.all(professorsNeedingDrafts.map(draftForProf));
 
   const emailRows = results.filter((r) => r !== null);
   const failedCount = results.filter((r) => r === null).length;
@@ -421,35 +326,19 @@ Structure rules:
     return NextResponse.json({ error: "Failed to generate any drafts" }, { status: 500 });
   }
 
-  const { data: saved, error: saveError } = await supabase
-    .from("emails")
-    .insert(emailRows)
-    .select();
-
-  if (saveError) return NextResponse.json({ error: saveError.message }, { status: 500 });
+  const saved = db.insertEmails(emailRows);
 
   return NextResponse.json({
-    emails: [...(existingDrafts ?? []), ...(saved ?? [])].map(attachEmail),
+    emails: [...existingDrafts, ...saved].map(attachEmail),
     failed_count: failedCount,
     duplicate_skipped: duplicateSkipped,
   });
 }
 
 export async function GET(request: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { searchParams } = new URL(request.url);
   const campaignId = searchParams.get("campaignId");
   if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
 
-  const { data: emails } = await supabase
-    .from("emails")
-    .select("*")
-    .eq("campaign_id", campaignId)
-    .eq("user_id", user.id)
-    .order("created_at");
-
-  return NextResponse.json({ emails: emails ?? [] });
+  return NextResponse.json({ emails: db.getEmailsForCampaign(campaignId) });
 }

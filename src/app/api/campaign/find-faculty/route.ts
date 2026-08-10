@@ -1,13 +1,14 @@
 export const maxDuration = 300;
 
-import { createClient } from "@/lib/supabase/server";
-import { anthropic, extractJsonString, parseClaudeJson, HAIKU, SONNET } from "@/lib/anthropic";
+import { z } from "zod";
+import { generateJson } from "@/lib/ai";
 import {
   resolveFacultyPageIds,
   ensureFacultyPageFresh,
   getActiveProfessorsForPages,
 } from "@/lib/faculty-pipeline";
 import { findRecentPapers } from "@/lib/semantic-scholar";
+import * as db from "@/lib/db";
 import type { Professor, RecentPaper } from "@/lib/types";
 
 const CONCURRENCY_LIMIT = 3;
@@ -94,57 +95,15 @@ Return a JSON array, one object per candidate, with these fields:
 
 Sort your output by \`final_score\` descending. The top N, where N is provided as input, will be selected for this campaign. Everyone else remains in the data store for future reuse and is not discarded.`;
 
-const encoder = new TextEncoder();
-
-function sse(data: object): Uint8Array {
-  return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
-}
-
-function extractText(content: unknown): string {
-  const blocks = content as Array<{ type: string; text?: string }>;
-  return blocks
-    .filter((b) => b.type === "text")
-    .map((b) => b.text ?? "")
-    .join("")
-    .trim();
-}
-
-async function reformatAsJson<T>(rawText: string, instruction: string): Promise<T> {
-  const res = await anthropic.messages.create({
-    model: HAIKU,
-    max_tokens: 512,
-    system:
-      "You extract and reformat information into valid JSON. Return ONLY valid JSON with no markdown fences and no explanation.",
-    messages: [
-      {
-        role: "user",
-        content: `${instruction}\n\nSource text:\n${rawText.slice(0, 10000)}`,
-      },
-    ],
-  });
-  const text = extractText(res.content);
-  const clean = text.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
-  const extracted = extractJsonString(clean);
-  if (!extracted) throw new SyntaxError("Could not reformat response as JSON");
-  return JSON.parse(extracted) as T;
-}
-
-async function robustJson<T>(rawText: string, fallbackInstruction: string): Promise<T> {
-  try {
-    return parseClaudeJson<T>(rawText);
-  } catch {
-    return reformatAsJson<T>(rawText, fallbackInstruction);
-  }
-}
-
-type ScoredProfessor = {
-  id: string;
-  domain_fit_score: number;
-  connection_summary: string | null;
-  capacity_notes: string | null;
-  final_score: number;
-  reasoning: string | null;
-};
+const ScoredProfessorSchema = z.object({
+  id: z.string(),
+  domain_fit_score: z.number(),
+  connection_summary: z.string().nullable(),
+  capacity_notes: z.string().nullable(),
+  final_score: z.number(),
+  reasoning: z.string().nullable(),
+});
+type ScoredProfessor = z.infer<typeof ScoredProfessorSchema>;
 
 async function rankProfessors(
   professors: Professor[],
@@ -160,14 +119,10 @@ async function rankProfessors(
     research_description: p.research_description,
   }));
 
-  const res = await anthropic.messages.create({
-    model: SONNET,
-    max_tokens: 4000,
+  return generateJson({
+    schema: z.array(ScoredProfessorSchema),
     system: RANKING_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: `Student's stated research interest: ${researchInterest}
+    prompt: `Student's stated research interest: ${researchInterest}
 
 Student's academic background:
 ${profileSummary}
@@ -175,43 +130,24 @@ ${profileSummary}
 N (top candidates to select for this campaign): ${targetCount}
 
 Candidates:
-${JSON.stringify(payload)}
-
-Return ONLY a JSON array: [{"id": "...", "domain_fit_score": 85, "connection_summary": "...", "capacity_notes": "...", "final_score": 80, "reasoning": "..."}]`,
-      },
-    ],
+${JSON.stringify(payload)}`,
+    tier: "smart",
+    maxOutputTokens: 4000,
   });
-
-  const raw = extractText(res.content);
-  return robustJson<ScoredProfessor[]>(
-    raw,
-    'Extract the ranking data. Return a JSON array: [{"id": "...", "domain_fit_score": 85, "connection_summary": "...", "capacity_notes": "...", "final_score": 80, "reasoning": "..."}]'
-  );
 }
 
 async function generateCampaignTitle(university: string, researchInterest: string): Promise<string> {
   try {
-    const res = await anthropic.messages.create({
-      model: HAIKU,
-      max_tokens: 256,
-      system: "You generate concise campaign titles. Return ONLY a valid JSON object.",
-      messages: [
-        {
-          role: "user",
-          content: `Generate a campaign title. Format: "{University short name} {full research subfield}". Examples: "JHU Behavioral Economics", "Columbia Condensed Matter Physics", "Berkeley Astrophysics", "MIT Machine Learning". For famous universities use the most recognizable short form (Berkeley, MIT, Caltech, Harvard, Stanford, Princeton, Yale, Columbia, Penn, JHU, Duke, Northwestern, Chicago). For others use standard abbreviations (UIUC, UMich, etc.). Include the full subfield name. Drop any timeline, the word "Research", and all other descriptors.
+    const result = await generateJson({
+      schema: z.object({ title: z.string() }),
+      system: "You generate concise campaign titles.",
+      prompt: `Generate a campaign title. Format: "{University short name} {full research subfield}". Examples: "JHU Behavioral Economics", "Columbia Condensed Matter Physics", "Berkeley Astrophysics", "MIT Machine Learning". For famous universities use the most recognizable short form (Berkeley, MIT, Caltech, Harvard, Stanford, Princeton, Yale, Columbia, Penn, JHU, Duke, Northwestern, Chicago). For others use standard abbreviations (UIUC, UMich, etc.). Include the full subfield name. Drop any timeline, the word "Research", and all other descriptors.
 
 University: ${university}
-Research interest: ${researchInterest}
-
-Return ONLY JSON: {"title": "..."}`,
-        },
-      ],
+Research interest: ${researchInterest}`,
+      tier: "fast",
+      maxOutputTokens: 256,
     });
-    const raw = extractText(res.content);
-    const result = await robustJson<{ title: string }>(
-      raw,
-      'Extract the campaign title from this text and return: {"title": "..."}'
-    );
     return result.title;
   } catch {
     const shortUniv = university.split(" ").pop() ?? university;
@@ -278,11 +214,6 @@ frames this as a flaw, mistake, or abandonment: avoid "no longer," "abandoned,"
 "moved away from." This is a factual update for the student's benefit, not a
 judgment of the professor.
 
-Example shape for drifted (illustrative only, do not reuse this exact wording):
-"States a focus on computational astrophysics and exoplanet detection. Recent
-publications, however, center on machine learning methods for large-scale survey
-data."
-
 Output
 
 Return only a JSON object in this exact format, with no surrounding text:
@@ -298,74 +229,36 @@ async function generateCardDescription(
 ): Promise<string | null> {
   if (!researchDescription) return null;
   try {
-    const res = await anthropic.messages.create({
-      model: SONNET,
-      max_tokens: 200,
+    const parsed = await generateJson({
+      schema: z.object({ description: z.string() }),
       system: CARD_DESCRIPTION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: JSON.stringify({
-            research_description: researchDescription,
-            recent_papers: papers ?? [],
-            tier,
-          }),
-        },
-      ],
+      prompt: JSON.stringify({ research_description: researchDescription, recent_papers: papers ?? [], tier }),
+      tier: "smart",
+      maxOutputTokens: 200,
     });
-    const raw = extractText(res.content);
-    const parsed = parseClaudeJson<{ description: string }>(raw);
-    return typeof parsed.description === "string" ? parsed.description.trim() : null;
+    return parsed.description.trim();
   } catch (err) {
     console.error("[card-description] generation failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-  }
+const encoder = new TextEncoder();
+function sse(data: object): Uint8Array {
+  return encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
+}
 
+export async function POST(request: Request) {
   const { campaignId } = await request.json();
   if (!campaignId) {
     return new Response(JSON.stringify({ error: "campaignId required" }), { status: 400 });
   }
 
-  const [{ data: campaign }, { data: profile }] = await Promise.all([
-    supabase.from("campaigns").select("*").eq("id", campaignId).single(),
-    supabase.from("profiles").select("*").eq("user_id", user.id).single(),
-  ]);
+  const campaign = db.getCampaign(campaignId);
+  const profile = db.getProfile();
 
   if (!campaign) {
     return new Response(JSON.stringify({ error: "Campaign not found" }), { status: 404 });
-  }
-
-  const { data: userData } = await supabase
-    .from("users")
-    .select("searches_remaining")
-    .eq("id", user.id)
-    .single();
-
-  const remaining = userData?.searches_remaining ?? 0;
-  const requestedCount = campaign.professor_count ?? 5;
-
-  if (remaining <= 0) {
-    return new Response(
-      JSON.stringify({ error: "No professor search credits remaining. Buy more to continue." }),
-      { status: 403 }
-    );
-  }
-
-  if (requestedCount > remaining) {
-    return new Response(
-      JSON.stringify({ error: `You only have ${remaining} scouting credit${remaining === 1 ? "" : "s"} remaining.` }),
-      { status: 403 }
-    );
   }
 
   const stream = new ReadableStream({
@@ -376,11 +269,12 @@ export async function POST(request: Request) {
         controller.enqueue(sse({ type: "progress", message: "Finding the faculty directory..." }));
 
         // Step 1-2: resolve (university, research interest) to faculty page ids,
-        // via the 3 month url_discovery_cache.
+        // via the 3 month url_discovery_cache. A manually pasted faculty page
+        // URL always wins (graceful degradation for non-search-capable setups).
         const facultyPageIds = await resolveFacultyPageIds(
-          supabase,
           campaign.university,
-          campaign.research_interest
+          campaign.research_interest,
+          campaign.faculty_page_url
         );
 
         controller.enqueue(sse({ type: "progress", message: "Loading faculty roster..." }));
@@ -388,11 +282,11 @@ export async function POST(request: Request) {
         // Step 3-4: refresh each page's professor roster per the 1 month TTL
         // and scrape_in_progress lock. Touches last_accessed_at on every page used.
         for (const pageId of facultyPageIds) {
-          await ensureFacultyPageFresh(supabase, pageId);
+          await ensureFacultyPageFresh(pageId);
         }
 
         // Step 5: pull all active professors from the resolved pages.
-        const professors = await getActiveProfessorsForPages(supabase, facultyPageIds);
+        const professors = getActiveProfessorsForPages(facultyPageIds);
 
         if (professors.length === 0) {
           controller.enqueue(
@@ -439,10 +333,7 @@ export async function POST(request: Request) {
 
         // Step 5 (Semantic Scholar + card descriptions): top N only, run in
         // parallel with a concurrency limit of 3, never cached.
-        type ProfEnrichment = {
-          papers: RecentPaper[] | null;
-          cardDescription: string | null;
-        };
+        type ProfEnrichment = { papers: RecentPaper[] | null; cardDescription: string | null };
         const enrichmentById = new Map<string, ProfEnrichment>();
         await runWithConcurrencyLimit(topN, CONCURRENCY_LIMIT, async ({ professor }) => {
           const { papers, tier } = await findRecentPapers(professor, campaign.university);
@@ -467,18 +358,16 @@ export async function POST(request: Request) {
         }));
 
         if (rows.length > 0) {
-          await supabase.from("campaign_professors").upsert(rows, { onConflict: "campaign_id,professor_id" });
+          db.upsertCampaignProfessors(rows);
         }
 
-        await supabase.from("campaigns").update({ title, status: "active" }).eq("id", campaignId);
-
-        await supabase.rpc("decrement_searches_by", { uid: user.id, amount: topN.length });
+        db.updateCampaign(campaignId, { title, status: "active" });
 
         controller.enqueue(sse({ type: "done", title }));
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error";
         try {
-          await supabase.from("campaigns").update({ status: "error" }).eq("id", campaignId);
+          db.updateCampaign(campaignId, { status: "error" });
         } catch {
           // best-effort; do not mask the original error
         }

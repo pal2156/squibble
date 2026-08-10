@@ -16,6 +16,11 @@ dist/
 .env.test.local
 .env.production.local
 
+# Local SQLite app data
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { DM_Sans } from "next/font/google";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import "./globals.css";
 import LayoutShell from "@/components/LayoutShell";
+import { isSetupComplete } from "@/lib/db";
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
@@ -12,14 +15,19 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "Squibble: Academic Outreach, Automated",
-  description: "AI-powered cold email platform for landing research positions.",
+  description: "Self-hosted AI research-outreach tool.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (pathname !== "/setup" && !pathname.startsWith("/api") && !isSetupComplete()) {
+    redirect("/setup");
+  }
+
   return (
     <html lang="en" className={dmSans.variable}>
       <body>

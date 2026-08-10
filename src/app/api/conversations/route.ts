@@ -1,55 +1,25 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getConversations } from "@/lib/db";
 
 export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const rows = getConversations();
 
-  // Only emails that have a reply
-  const { data: emails } = await supabase
-    .from("emails")
-    .select(`
-      id, professor_name, university, department,
-      subject, body, status, sent_at,
-      replies ( body, received_at, classification )
-    `)
-    .eq("user_id", user.id)
-    .in("status", ["positive", "negative"])
-    .order("sent_at", { ascending: false });
+  const conversations = rows
+    .filter((e) => e.reply)
+    .map((e) => ({
+      id: e.id,
+      professor: e.professor_name ?? "",
+      university: e.university ?? "",
+      department: e.department ?? "",
+      dateSent: e.sent_at ? formatDate(e.sent_at) : "",
+      status: (e.status === "positive" ? "Positive Reply" : "Negative Reply") as "Positive Reply" | "Negative Reply",
+      subject: e.subject ?? "",
+      body: e.body ?? "",
+      reply: { date: formatDate(e.reply!.received_at), body: e.reply!.body ?? "" },
+    }))
+    .sort((a, b) => new Date(b.reply.date).getTime() - new Date(a.reply.date).getTime());
 
-  // replies is returned as a plain object (not array) because email_id has a UNIQUE constraint.
-  type ReplyObj = { body: string; received_at: string; classification?: string };
-
-  const rows = (emails ?? [])
-    .filter((e) => e.replies != null)
-    .map((e) => {
-      const replyRow = e.replies as unknown as ReplyObj;
-      const uiStatus =
-        e.status === "positive" ? "Positive Reply" : "Negative Reply";
-
-      return {
-        id: e.id,
-        professor: e.professor_name ?? "",
-        university: e.university ?? "",
-        department: e.department ?? "",
-        dateSent: e.sent_at ? formatDate(e.sent_at) : "",
-        status: uiStatus as "Positive Reply" | "Negative Reply",
-        subject: e.subject ?? "",
-        body: e.body ?? "",
-        reply: {
-          date: formatDate(replyRow.received_at),
-          body: replyRow.body,
-        },
-      };
-    })
-    .sort((a, b) => {
-      const aDate = a.reply?.date ? new Date(a.reply.date).getTime() : 0;
-      const bDate = b.reply?.date ? new Date(b.reply.date).getTime() : 0;
-      return bDate - aDate;
-    });
-
-  return NextResponse.json({ conversations: rows });
+  return NextResponse.json({ conversations });
 }
 
 function formatDate(iso: string): string {

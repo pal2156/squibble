@@ -1,14 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { updateEmail } from "@/lib/db";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
   const { id } = await params;
   const { status } = await request.json() as { status: string };
 
@@ -17,15 +13,8 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
-    .from("emails")
-    .update({ status })
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select()
-    .single();
+  const email = updateEmail(id, { status: status as never });
+  if (!email) return NextResponse.json({ error: "Email not found" }, { status: 404 });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ email: data });
+  return NextResponse.json({ email });
 }
