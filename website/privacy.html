@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Privacy Policy | Squibble</title>
+<meta name="description" content="Squibble Privacy Policy" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+<div class="lp-page" style="background:var(--platinum);">
+
+  <div class="nav-wrap">
+    <nav class="nav">
+      <div class="nav-inner">
+        <a class="nav-brand" href="index.html" style="text-decoration:none;">
+          <img src="assets/Logo2Squibble.png" alt="" style="display:block;height:28px;width:auto;flex-shrink:0;margin-right:-4px;" aria-hidden="true" />
+          <span>Squibble</span>
+        </a>
+        <div class="nav-links">
+          <a class="nav-link" href="index.html#product">Product</a>
+          <a class="nav-link" href="index.html#get-started">Get started</a>
+          <a class="nav-link" href="about.html">Company</a>
+        </div>
+        <a class="btn btn-primary btn-sm" href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">Download</a>
+      </div>
+    </nav>
+  </div>
+
+  <main class="legal-main">
+    <p class="legal-updated">Last updated: September 20, 2026</p>
+    <h1 class="legal-title">Privacy Policy</h1>
+    <p class="legal-intro">
+      This Privacy Policy explains how Squibble ("we", "us", or "our"), operated by Paul Lacarriere,
+      handles data related to squibble.pro (this website) and the free, open-source Squibble software
+      you download and run yourself.
+    </p>
+
+    <div class="legal-divider"></div>
+
+    <div class="legal-sections">
+
+      <div>
+        <h2 class="legal-h2">1. The short version</h2>
+        <p class="legal-body">
+          Squibble is self-hosted software. When you download and run it, it runs entirely on your own
+          computer. There is no Squibble account, no Squibble server, and no Squibble database that
+          your profile, campaigns, emails, or replies pass through. We do not have access to any of it,
+          because there is no path for it to reach us.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">2. This website (squibble.pro)</h2>
+        <p class="legal-body">
+          squibble.pro is a static, informational website — it explains what Squibble is and links to
+          the source code. It does not have a login, does not set tracking cookies, and does not run
+          analytics. The only data it can receive from you is whatever you choose to send by emailing
+          <a href="mailto:contact@squibble.pro" class="legal-link">contact@squibble.pro</a>.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">3. Data the Squibble software stores locally</h2>
+        <p class="legal-body">
+          When you run Squibble on your own machine, it stores the following locally, on your own disk,
+          and nowhere else:
+        </p>
+        <ul class="legal-list">
+          <li><span class="legal-strong">Profile information.</span> Your school, academic year, major, coursework, research experience, skills, and any resume you upload — in a local SQLite database file.</li>
+          <li><span class="legal-strong">Campaign data.</span> The research interests, universities, and position types you search for.</li>
+          <li><span class="legal-strong">Professor and email data.</span> The faculty shortlist Squibble finds, the emails it drafts and sends, and the replies it detects.</li>
+          <li><span class="legal-strong">Credentials.</span> Your AI provider API key and email (SMTP/IMAP) credentials, written to a local <span class="legal-code">.env.local</span> file in the project folder on your machine.</li>
+        </ul>
+        <p class="legal-body" style="margin-top:16px;">
+          None of this is transmitted to us. There is no sync, no telemetry, and no remote backup built
+          into the software.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">4. Third parties you choose to connect</h2>
+        <p class="legal-body">
+          Squibble's only network calls go to the services <span class="legal-strong">you personally configure</span>
+          during setup:
+        </p>
+        <ul class="legal-list">
+          <li><span class="legal-strong">Your AI provider.</span> Whichever of Claude (Anthropic), OpenAI, or Gemini (Google) you choose. Your profile, campaign parameters, faculty research summaries, and drafted emails are sent to that provider's API using your own API key, governed by that provider's privacy policy — not ours.</li>
+          <li><span class="legal-strong">Your email provider.</span> Squibble sends outreach emails via SMTP and checks for replies via IMAP, using the email account and app password you provide during setup. Only messages related to professors you contacted through Squibble are read.</li>
+        </ul>
+        <p class="legal-body" style="margin-top:16px;">
+          We are not a party to any of these connections. We never see your API keys, your email
+          credentials, or the content that flows between your machine and these providers.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">5. Source code and issue tracking</h2>
+        <p class="legal-body">
+          Squibble's source code is hosted publicly on
+          <a href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer" class="legal-link">GitHub</a>.
+          If you open an issue, pull request, or discussion there, that activity is subject to
+          <a href="https://docs.github.com/en/site-policy/privacy-policies/github-privacy-statement" target="_blank" rel="noopener noreferrer" class="legal-link">GitHub's privacy policy</a>,
+          not this one.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">6. Children's privacy</h2>
+        <p class="legal-body">
+          Squibble is not directed at children under the age of 13. Because the software runs entirely
+          on hardware you control and we operate no accounts, we have no way of collecting information
+          about who runs it. If you have concerns about a child's use of the software, that's a matter
+          of local device and account controls on your end.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">7. Changes to this policy</h2>
+        <p class="legal-body">
+          We may update this Privacy Policy from time to time, for example as the software's data model
+          changes. Material changes will be reflected here with an updated "Last updated" date and, where
+          relevant, noted in the GitHub repository.
+        </p>
+      </div>
+
+      <div>
+        <h2 class="legal-h2">8. Contact</h2>
+        <p class="legal-body">
+          Questions about this Privacy Policy? Email
+          <a href="mailto:contact@squibble.pro" class="legal-link">contact@squibble.pro</a>
+          or open an issue on
+          <a href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer" class="legal-link">GitHub</a>.
+        </p>
+      </div>
+
+    </div>
+  </main>
+
+  <footer id="company">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="mark-row">
+          <img src="assets/Logo2Squibble.png" alt="" style="display:block;height:28px;width:auto;flex-shrink:0;margin-right:-4px;" aria-hidden="true" />
+          <span class="name">Squibble</span>
+        </div>
+        <div class="tag">Land research positions, effortlessly.</div>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="index.html#product">How it works</a></li>
+          <li><a href="index.html#get-started">Get started</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="about.html">About</a></li>
+          <li><a href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="mailto:contact@squibble.pro">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2026 Squibble. Free, open source, and built for students.
+    </div>
+  </footer>
+
+</div>
+<script src="js/main.js"></script>
+</body>
+</html>
