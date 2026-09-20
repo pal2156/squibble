@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Squibble — Land Research Positions</title>
+<meta name="description" content="Squibble finds professors, drafts personalized outreach emails, and tracks replies — free, open source, and self-hosted on your own machine." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/landing.css" />
+</head>
+<body>
+<div class="lp-page">
+
+  <!-- NAV -->
+  <div class="nav-wrap">
+    <nav class="nav">
+      <div class="nav-inner">
+        <a class="nav-brand" href="/" style="text-decoration:none;">
+          <img src="assets/Logo2Squibble.png" alt="" style="display:block;height:28px;width:auto;flex-shrink:0;margin-right:-4px;" aria-hidden="true" />
+          <span>Squibble</span>
+        </a>
+        <div class="nav-links">
+          <a class="nav-link" href="#product">Product</a>
+          <a class="nav-link" href="#get-started">Get started</a>
+          <a class="nav-link" href="about.html">Company</a>
+        </div>
+        <a class="btn btn-primary btn-sm" href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">Download</a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- HERO -->
+  <section class="hero" data-screen-label="01 Hero">
+    <div class="hero-grid">
+      <div class="hero-left">
+        <h1 class="hero-headline">Land Research Positions</h1>
+        <p class="hero-sub">Squibble finds professors, contacts them, and gets you replies.</p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">
+            Download Squibble
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </a>
+          <a class="btn btn-secondary" href="#product">See How It Works</a>
+        </div>
+        <p style="font-size:12px;color:var(--slate);margin-top:12px;line-height:1.5;">
+          Free and open source, forever. Runs entirely on your own machine — see the
+          <a href="privacy.html" style="color:var(--slate);text-decoration:underline;">Privacy Policy</a>
+          for exactly what that means.
+        </p>
+      </div>
+      <div class="hero-right">
+        <div data-workflow-diagram></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCT DEMO -->
+  <section class="demo" id="product" data-screen-label="02 Demo">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="eyebrow"><span class="dot"></span>How it works</div>
+        <h2>See Squibble in action</h2>
+        <p>From profile to professor reply in minutes.</p>
+      </div>
+      <div class="demo-grid">
+
+        <div class="demo-card reveal">
+          <div class="demo-step">01 · Build your profile</div>
+          <div class="demo-title">Tell Squibble who you are.</div>
+          <div class="mini-app">
+            <div class="mini-app-head"><span class="chip-dot"></span><span class="label">Profile</span></div>
+            <div class="mini-field">
+              <div class="mini-label">Full name</div>
+              <div class="mini-input">Priya Subramanian</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+              <div class="mini-field">
+                <div class="mini-label">School</div>
+                <div class="mini-input">UC Berkeley</div>
+              </div>
+              <div class="mini-field">
+                <div class="mini-label">Major</div>
+                <div class="mini-input">Physics</div>
+              </div>
+            </div>
+            <div class="mini-field" style="margin-bottom:0;">
+              <div class="mini-label">Research experience</div>
+              <div class="mini-input tall">Two semesters in a condensed matter lab. Worked on cryogenic STM measurements of topological insulators.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-card reveal">
+          <div class="demo-step">02 · Find ranked professors</div>
+          <div class="demo-title">Faculty matched to your background.</div>
+          <div class="mini-app">
+            <div class="mini-app-head"><span class="chip-dot"></span><span class="label">14 ranked · 3 selected</span></div>
+            <div class="prof-row selected">
+              <div class="prof-avatar">MH</div>
+              <div class="prof-body">
+                <div class="prof-name">Maya Hartwell</div>
+                <div class="prof-dept">Condensed Matter · Stanford</div>
+                <div class="prof-research">Topological phases in 2D materials, STM imaging.</div>
+              </div>
+              <div class="match-badge">94%</div>
+            </div>
+            <div class="prof-row">
+              <div class="prof-avatar">DO</div>
+              <div class="prof-body">
+                <div class="prof-name">Daniel Okonkwo</div>
+                <div class="prof-dept">Quantum Materials · MIT</div>
+                <div class="prof-research">Superconducting heterostructures and Josephson effects.</div>
+              </div>
+              <div class="match-badge">91%</div>
+            </div>
+            <div class="prof-row">
+              <div class="prof-avatar">HP</div>
+              <div class="prof-body">
+                <div class="prof-name">Hye-Jin Park</div>
+                <div class="prof-dept">Condensed Matter · Princeton</div>
+                <div class="prof-research">Quantum Hall states in moiré graphene.</div>
+              </div>
+              <div class="match-badge">87%</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-card reveal">
+          <div class="demo-step">03 · Review your emails</div>
+          <div class="demo-title">Personalized drafts, ready to send.</div>
+          <div class="mini-app">
+            <div class="mini-app-head"><span class="chip-dot"></span><span class="label">Draft 1 of 5</span></div>
+            <div class="email-meta">
+              <div class="email-meta-row"><span class="k">To</span><span class="v">m.hartwell@stanford.edu</span></div>
+              <div class="email-meta-row"><span class="k">Subject</span><span class="v">Undergraduate interest — topological STM measurements</span></div>
+            </div>
+            <div class="email-body">
+              Dear Professor Hartwell,<br /><br />
+              I&apos;m a sophomore physics major at UC Berkeley with two semesters of cryogenic STM work, and your group&apos;s recent paper on edge modes in WTe₂ was the most exciting thing I read last quarter.<br /><br />
+              I&apos;d love to ask about a summer position…
+            </div>
+            <div class="email-actions">
+              <button class="approve">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                Approve
+              </button>
+              <button class="edit">Edit</button>
+              <button class="skip">Skip</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-card reveal">
+          <div class="demo-step">04 · Track replies</div>
+          <div class="demo-title">Every response, classified.</div>
+          <div class="mini-app">
+            <div class="mini-app-head"><span class="chip-dot"></span><span class="label">Last 30 days</span></div>
+            <div class="track-stat">
+              <div>
+                <div class="l">Response rate</div>
+                <div class="v" style="margin-top:4px;">42%</div>
+              </div>
+              <span class="change" style="margin-left:auto;">+8% this month</span>
+            </div>
+            <div class="track-table">
+              <div class="track-row">
+                <div class="who">Maya Hartwell<span class="uni">Stanford</span></div>
+                <div class="status-pill positive"><span class="pd"></span>Positive Reply</div>
+              </div>
+              <div class="track-row">
+                <div class="who">Daniel Okonkwo<span class="uni">MIT</span></div>
+                <div class="status-pill positive"><span class="pd"></span>Positive Reply</div>
+              </div>
+              <div class="track-row">
+                <div class="who">Hye-Jin Park<span class="uni">Princeton</span></div>
+                <div class="status-pill neutral"><span class="pd"></span>No Response</div>
+              </div>
+              <div class="track-row">
+                <div class="who">Elena Russo<span class="uni">Columbia</span></div>
+                <div class="status-pill positive"><span class="pd"></span>Positive Reply</div>
+              </div>
+              <div class="track-row">
+                <div class="who">Tobias Mehring<span class="uni">Caltech</span></div>
+                <div class="status-pill neutral"><span class="pd"></span>No Response</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF -->
+  <section class="social" data-screen-label="03 Social proof">
+    <div class="container">
+      <div class="social-label">Research opportunities landed at</div>
+      <div style="display:flex;align-items:center;gap:20px;justify-content:center;padding:24px 0;">
+        <span class="ticker-logo"><img src="assets/logos/columbia.png" alt="Columbia" /></span>
+        <span class="ticker-item" style="display:flex;align-items:center;gap:8px;">Condensed Matter Physics</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROOF -->
+  <section class="proof" data-screen-label="04 Proof">
+    <div class="container">
+      <div class="section-header reveal">
+        <div class="eyebrow"><span class="dot"></span>Proven results</div>
+        <h2>Real replies from real professors.</h2>
+      </div>
+      <div class="proof-image reveal">
+        <img src="assets/proof-email.png" alt="Real reply email from a professor" />
+      </div>
+    </div>
+  </section>
+
+  <!-- GET STARTED (replaces the old paid pricing tiers) -->
+  <section id="get-started" data-screen-label="05 Get started">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="eyebrow"><span class="dot"></span>Get started</div>
+        <h2>Free. Open source. Yours.</h2>
+        <p>No account, no subscription, no credit card. Clone it, connect your own AI and email accounts, and you're outreach-ready.</p>
+      </div>
+      <div class="get-started-grid">
+
+        <div class="price-card featured reveal">
+          <div class="price-name">Squibble</div>
+          <div class="price-amount"><span class="num">$0</span></div>
+          <div class="price-sub">Free forever, no limits.</div>
+          <p class="price-subtitle">Self-hosted on your machine.</p>
+          <ul class="price-features">
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Unlimited professor searches</li>
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Unlimited personalized emails</li>
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Reply tracking dashboard</li>
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Bring your own AI key (Claude, OpenAI, or Gemini)</li>
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Your own email via SMTP/IMAP</li>
+            <li><span class="ck"><svg viewBox="0 0 24 24" fill="none" stroke="var(--cyan)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12" /></svg></span>Your data never leaves your machine</li>
+          </ul>
+          <a class="price-cta" href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+        </div>
+
+        <div class="price-card reveal">
+          <div class="price-name">Quick start</div>
+          <p class="price-subtitle" style="margin-top:4px;">Node.js 20+ and an AI provider key is all you need.</p>
+          <div class="code-block">
+            <code><span class="cmt"># clone and install</span>
+git clone https://github.com/pal2156/squibble
+cd squibble
+npm install
+
+<span class="cmt"># run it</span>
+npm run dev</code>
+          </div>
+          <p class="price-sub" style="margin-bottom:24px;">Open <strong style="color:var(--jet);">localhost:3000</strong> and the setup wizard walks you through connecting an AI provider and your email account.</p>
+          <a class="price-cta" href="https://github.com/pal2156/squibble#readme" target="_blank" rel="noopener noreferrer">Read the full setup guide</a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" data-screen-label="06 FAQ">
+    <div class="container-narrow">
+      <div class="section-header reveal">
+        <div class="eyebrow"><span class="dot"></span>FAQ</div>
+        <h2>Questions? Answered.</h2>
+      </div>
+      <div class="reveal">
+        <div class="faq-list">
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>Is it really free?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Yes. Squibble is open source and self-hosted — there's no subscription and no credit system. You bring your own AI provider key (Gemini has a genuine free tier) and your own email account, and run it on your own computer.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>How does Squibble find professors?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Squibble uses AI to search the faculty pages of any university and rank professors by how well they match your research interests and background.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>Will the emails actually sound like me?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Yes. Every email is written using your specific profile, your coursework, your experience, and the professor's actual research. No two emails are the same.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>What happens after a professor replies?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Squibble polls your own inbox over IMAP in the background, detects replies from professors you contacted, and classifies each one as positive or negative. You see it show up in your dashboard automatically.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>Is my data private?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Squibble runs entirely on your own machine — there's no Squibble server collecting your profile, emails, or replies. The only third parties involved are the AI provider and email host you personally configure. See the <a href="privacy.html" style="color:var(--cyan);text-decoration:underline;">Privacy Policy</a> for details.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>Can I use this for paid internships or just unpaid research?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Both. Squibble works for any type of research position, paid or unpaid.</div></div>
+          </div>
+
+          <div class="faq-item" data-faq-item>
+            <button class="faq-q" aria-expanded="false">
+              <span>What do I need to run it?</span>
+              <span class="faq-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></span>
+            </button>
+            <div class="faq-a"><div class="faq-a-inner">Node.js 20+, an API key from an AI provider (Claude, OpenAI, or Gemini), and an email account that supports app passwords (Gmail, Outlook, Yahoo, or similar). No credit card, no OAuth app registration, no cloud database.</div></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer id="company" data-screen-label="08 Footer">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="mark-row">
+          <img src="assets/Logo2Squibble.png" alt="" style="display:block;height:28px;width:auto;flex-shrink:0;margin-right:-4px;" aria-hidden="true" />
+          <span class="name">Squibble</span>
+        </div>
+        <div class="tag">Land research positions, effortlessly.</div>
+      </div>
+      <div class="footer-col">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#product">How it works</a></li>
+          <li><a href="#get-started">Get started</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Company</h4>
+        <ul>
+          <li><a href="about.html">About</a></li>
+          <li><a href="https://github.com/pal2156/squibble" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="mailto:contact@squibble.pro">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="privacy.html">Privacy Policy</a></li>
+          <li><a href="terms.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      © 2026 Squibble. Free, open source, and built for students.
+    </div>
+  </footer>
+
+</div>
+
+<script src="js/main.js"></script>
+<script src="js/workflow-diagram.js"></script>
+</body>
+</html>
